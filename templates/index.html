@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panadería San Michell — Control de Distribuidores, Facturas y Gastos</title>
+    <!-- Bootstrap 5 CSS para un diseño limpio, moderno y responsivo -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <!-- Estilos personalizados para Panadería San Michell -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+
+    <!-- Barra de Navegación Superior -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-bakery shadow-sm sticky-top">
+        <div class="container">
+            <a class="navbar-brand d-flex align-items-center gap-2 fw-bold" href="{{ url_for('index') }}">
+                <i class="bi bi-shop-window fs-3 text-warning"></i>
+                <div>
+                    <span class="d-block lh-1">Panadería San Michell</span>
+                    <small class="text-light-50 fw-normal" style="font-size: 0.75rem;">Gestión Comercial de Proveedores y Facturación</small>
+                </div>
+            </a>
+
+            <!-- Selector de Mes para Comparación Mensual -->
+            <form method="GET" action="{{ url_for('index') }}" class="d-flex align-items-center gap-2 bg-white bg-opacity-10 p-2 rounded-3">
+                <label for="mes" class="text-white small fw-semibold mb-0 text-nowrap">
+                    <i class="bi bi-calendar3 me-1"></i>Período a evaluar:
+                </label>
+                <input type="month" id="mes" name="mes" class="form-control form-control-sm" value="{{ mes_filtro }}" onchange="this.form.submit()">
+                <select name="distribuidor_id" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="todos" {% if distribuidor_filtro == 'todos' %}selected{% endif %}>Todos los distribuidores</option>
+                    {% for dist in distribuidores %}
+                        <option value="{{ dist.id }}" {% if distribuidor_filtro == dist.id|string %}selected{% endif %}>{{ dist.nombre }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+        </div>
+    </nav>
+
+    <main class="container py-4">
+
+        <!-- Mensajes de Retroalimentación (Flash Messages) -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm" role="alert">
+                        <i class="bi bi-info-circle-fill me-2"></i>{{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- Tarjetas de Resumen y Comparación Rápida del Mes -->
+        <div class="row g-3 mb-4">
+            <div class="col-md-3">
+                <div class="card card-metric border-0 shadow-sm h-100 bg-gradient-total text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="text-uppercase small fw-bold opacity-75">Gasto Total ({{ mes_filtro }})</span>
+                            <i class="bi bi-cash-stack fs-3"></i>
+                        </div>
+                        <h3 class="fw-bold my-2">{{ total_general_mes | moneda }}</h3>
+                        <small class="opacity-75">{{ facturas | length }} facturas registradas en el mes</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card card-metric border-0 shadow-sm h-100 border-start border-4 border-primary">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center text-primary">
+                            <span class="text-uppercase small fw-bold">Facturas Diarias</span>
+                            <i class="bi bi-sun fs-4"></i>
+                        </div>
+                        <h4 class="fw-bold my-2 text-dark">{{ totales_frecuencia['Diaria'] | moneda }}</h4>
+                        <small class="text-muted">{{ facturas_diarias | length }} pedidos diarios</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card card-metric border-0 shadow-sm h-100 border-start border-4 border-success">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center text-success">
+                            <span class="text-uppercase small fw-bold">Facturas Semanales</span>
+                            <i class="bi bi-calendar-week fs-4"></i>
+                        </div>
+                        <h4 class="fw-bold my-2 text-dark">{{ totales_frecuencia['Semanal'] | moneda }}</h4>
+                        <small class="text-muted">{{ facturas_semanales | length }} pedidos semanales</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card card-metric border-0 shadow-sm h-100 border-start border-4 border-warning">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center text-warning-emphasis">
+                            <span class="text-uppercase small fw-bold">Facturas Mensuales</span>
+                            <i class="bi bi-calendar-month fs-4"></i>
+                        </div>
+                        <h4 class="fw-bold my-2 text-dark">{{ totales_frecuencia['Mensual'] | moneda }}</h4>
+                        <small class="text-muted">{{ facturas_mensuales | length }} pedidos mensuales</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Desglose por Medio de Pago (Efectivo, Cheque, Transferencia) -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-body py-3">
+                <div class="row align-items-center text-center g-2">
+                    <div class="col-md-3 text-md-start">
+                        <span class="fw-bold text-bakery"><i class="bi bi-wallet2 me-2"></i>Desglose por Medio de Pago:</span>
+                    </div>
+                    <div class="col-md-3">
+                        <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2 w-100 fs-6">
+                            <i class="bi bi-cash-coin me-1"></i> Efectivo: <strong>{{ totales_pago['Efectivo'] | moneda }}</strong>
+                        </span>
+                    </div>
+                    <div class="col-md-3">
+                        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle px-3 py-2 w-100 fs-6">
+                            <i class="bi bi-card-heading me-1"></i> Cheque: <strong>{{ totales_pago['Cheque'] | moneda }}</strong>
+                        </span>
+                    </div>
+                    <div class="col-md-3">
+                        <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle px-3 py-2 w-100 fs-6">
+                            <i class="bi bi-bank me-1"></i> Transferencia: <strong>{{ totales_pago['Transferencia'] | moneda }}</strong>
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECCIÓN PRINCIPAL: Formularios de Ingreso (Izquierda) y Pestañas de Facturas (Derecha) -->
+        <div class="row g-4 mb-5">
+
+            <!-- Columna Izquierda: Ingreso de Facturas (Pestañas Diaria / Semanal / Mensual) y Nuevo Distribuidor -->
+            <div class="col-lg-5">
+
+                <!-- Tarjeta 1: Ingresar Factura Clasificada por Pestaña (Diaria, Semanal, Mensual) -->
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-header bg-bakery text-white py-3">
+                        <h5 class="mb-0 fw-bold"><i class="bi bi-receipt-cutoff me-2"></i>Ingresar Nueva Factura y Pedido</h5>
+                        <small class="text-white-50">Selecciona la pestaña según si el gasto es Diario, Semanal o Mensual</small>
+                    </div>
+                    <div class="card-body">
+                        <!-- Pestañas para elegir tipo de factura manualmente -->
+                        <ul class="nav nav-pills nav-fill mb-3 bg-light p-1 rounded" id="tipoFacturaTab" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active fw-semibold" id="btn-tab-diaria" data-bs-toggle="pill" type="button" onclick="seleccionarFrecuencia('Diaria')">
+                                    <i class="bi bi-sun me-1"></i>Diaria
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link fw-semibold" id="btn-tab-semanal" data-bs-toggle="pill" type="button" onclick="seleccionarFrecuencia('Semanal')">
+                                    <i class="bi bi-calendar-week me-1"></i>Semanal
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link fw-semibold" id="btn-tab-mensual" data-bs-toggle="pill" type="button" onclick="seleccionarFrecuencia('Mensual')">
+                                    <i class="bi bi-calendar-month me-1"></i>Mensual
+                                </button>
+                            </li>
+                        </ul>
+
+                        <form action="{{ url_for('nueva_factura') }}" method="POST">
+                            <!-- Campo oculto sincronizado con la pestaña activa -->
+                            <input type="hidden" id="input_tipo_frecuencia" name="tipo_frecuencia" value="Diaria">
+
+                            <div class="alert alert-secondary py-2 small mb-3 d-flex align-items-center justify-content-between">
+                                <span>Clasificación actual del registro:</span>
+                                <span id="badge_frecuencia_activa" class="badge bg-primary fs-6">Factura Diaria</span>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Distribuidor / Proveedor *</label>
+                                <select name="distribuidor_id" class="form-select" required>
+                                    <option value="" disabled selected>-- Selecciona un distribuidor --</option>
+                                    {% for dist in distribuidores %}
+                                        <option value="{{ dist.id }}">{{ dist.nombre }} ({{ dist.rubro_insumo }})</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <div class="row g-2 mb-3">
+                                <div class="col-sm-6">
+                                    <label class="form-label fw-semibold">N° de Factura *</label>
+                                    <input type="text" name="numero_factura" class="form-control" placeholder="Ej: F-10520" required>
+                                </div>
+                                <div class="col-sm-6">
+                                    <label class="form-label fw-semibold">Fecha de Emisión *</label>
+                                    <input type="date" name="fecha" class="form-control" value="{{ fecha_hoy }}" required>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Detalle del Pedido / Insumos *</label>
+                                <textarea name="detalle_pedido" class="form-control" rows="2" placeholder="Ej: 15 sacos de harina 25kg, 10kg manteca..." required></textarea>
+                            </div>
+
+                            <div class="row g-2 mb-3">
+                                <div class="col-sm-6">
+                                    <label class="form-label fw-semibold">Monto a Cancelar ($) *</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text">$</span>
+                                        <input type="number" name="monto" class="form-control" min="1" step="1" placeholder="Ej: 245000" required>
+                                    </div>
+                                </div>
+                                <div class="col-sm-6">
+                                    <label class="form-label fw-semibold">Medio de Pago *</label>
+                                    <select name="medio_pago" class="form-select" required>
+                                        <option value="Efectivo">💵 Efectivo</option>
+                                        <option value="Cheque">🎫 Cheque</option>
+                                        <option value="Transferencia">🏦 Transferencia</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <button type="submit" class="btn btn-bakery w-100 fw-bold py-2">
+                                <i class="bi bi-plus-circle me-1"></i>Guardar Factura y Pedido
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Tarjeta 2: Registrar Nuevo Distribuidor -->
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header bg-dark text-white py-3">
+                        <h5 class="mb-0 fw-bold"><i class="bi bi-truck me-2"></i>Registrar Distribuidor</h5>
+                        <small class="text-white-50">Agrega nuevos proveedores a Panadería San Michell</small>
+                    </div>
+                    <div class="card-body">
+                        <form action="{{ url_for('nuevo_distribuidor') }}" method="POST">
+                            <div class="mb-2">
+                                <label class="form-label small fw-semibold">Nombre del Distribuidor *</label>
+                                <input type="text" name="nombre" class="form-control form-control-sm" placeholder="Ej: Comercializadora Santa Rosa" required>
+                            </div>
+                            <div class="row g-2 mb-2">
+                                <div class="col-sm-6">
+                                    <label class="form-label small fw-semibold">RUT / ID Empresa</label>
+                                    <input type="text" name="rut_empresa" class="form-control form-control-sm" placeholder="Ej: 76.543.210-K">
+                                </div>
+                                <div class="col-sm-6">
+                                    <label class="form-label small fw-semibold">Teléfono Contacto</label>
+                                    <input type="text" name="telefono" class="form-control form-control-sm" placeholder="Ej: +56 9 1234 5678">
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label small fw-semibold">Insumos o Rubro que provee *</label>
+                                <input type="text" name="rubro_insumo" class="form-control form-control-sm" placeholder="Ej: Harinas, Lácteos, Envases..." required>
+                            </div>
+                            <button type="submit" class="btn btn-outline-dark btn-sm w-100 fw-semibold">
+                                <i class="bi bi-person-plus me-1"></i>Agregar Distribuidor
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Columna Derecha: Visualización de Facturas por Pestañas (Diarias, Semanales, Mensuales y Todas) -->
+            <div class="col-lg-7">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-header bg-white py-3 border-bottom">
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                            <h5 class="mb-0 fw-bold text-bakery">
+                                <i class="bi bi-journal-text me-2"></i>Registro de Facturas ({{ mes_filtro }})
+                            </h5>
+                            <!-- Pestañas de filtrado de tablas -->
+                            <ul class="nav nav-tabs card-header-tabs" id="verFacturasTab" role="tablist">
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link active fw-semibold" data-bs-toggle="tab" data-bs-target="#vista-todas" type="button">
+                                        Todas ({{ facturas|length }})
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link text-primary fw-semibold" data-bs-toggle="tab" data-bs-target="#vista-diarias" type="button">
+                                        Diarias ({{ facturas_diarias|length }})
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link text-success fw-semibold" data-bs-toggle="tab" data-bs-target="#vista-semanales" type="button">
+                                        Semanales ({{ facturas_semanales|length }})
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link text-warning-emphasis fw-semibold" data-bs-toggle="tab" data-bs-target="#vista-mensuales" type="button">
+                                        Mensuales ({{ facturas_mensuales|length }})
+                                    </button>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="card-body p-0">
+                        <div class="tab-content">
+                            <!-- Macro reutilizable de Jinja2 para renderizar la tabla de facturas en cada pestaña -->
+                            {% macro tabla_facturas(lista_facturas, mensaje_vacio) %}
+                                {% if lista_facturas %}
+                                    <div class="table-responsive">
+                                        <table class="table table-hover align-middle mb-0">
+                                            <thead class="table-light small text-uppercase">
+                                                <tr>
+                                                    <th class="ps-3">Factura / Fecha</th>
+                                                    <th>Distribuidor y Pedido</th>
+                                                    <th>Tipo</th>
+                                                    <th>Medio Pago</th>
+                                                    <th class="text-end">Monto</th>
+                                                    <th class="text-center pe-3">Acción</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for f in lista_facturas %}
+                                                <tr>
+                                                    <td class="ps-3">
+                                                        <span class="fw-bold d-block text-dark">{{ f.numero_factura }}</span>
+                                                        <small class="text-muted">{{ f.fecha }}</small>
+                                                    </td>
+                                                    <td>
+                                                        <span class="fw-semibold d-block">{{ f.distribuidor_nombre }}</span>
+                                                        <small class="text-muted">{{ f.detalle_pedido }}</small>
+                                                    </td>
+                                                    <td>
+                                                        {% if f.tipo_frecuencia == 'Diaria' %}
+                                                            <span class="badge bg-primary-subtle text-primary">Diaria</span>
+                                                        {% elif f.tipo_frecuencia == 'Semanal' %}
+                                                            <span class="badge bg-success-subtle text-success">Semanal</span>
+                                                        {% else %}
+                                                            <span class="badge bg-warning-subtle text-warning-emphasis">Mensual</span>
+                                                        {% endif %}
+                                                    </td>
+                                                    <td>
+                                                        {% if f.medio_pago == 'Efectivo' %}
+                                                            <span class="badge bg-light text-dark border"><i class="bi bi-cash me-1 text-success"></i>Efectivo</span>
+                                                        {% elif f.medio_pago == 'Cheque' %}
+                                                            <span class="badge bg-light text-dark border"><i class="bi bi-card-heading me-1 text-warning"></i>Cheque</span>
+                                                        {% else %}
+                                                            <span class="badge bg-light text-dark border"><i class="bi bi-bank me-1 text-info"></i>Transferencia</span>
+                                                        {% endif %}
+                                                    </td>
+                                                    <td class="text-end fw-bold text-dark">
+                                                        {{ f.monto | moneda }}
+                                                    </td>
+                                                    <td class="text-center pe-3">
+                                                        <form action="{{ url_for('eliminar_factura', factura_id=f.id) }}" method="POST" onsubmit="return confirm('¿Eliminar la factura {{ f.numero_factura }}?');">
+                                                            <button type="submit" class="btn btn-sm btn-outline-danger border-0" title="Eliminar factura">
+                                                                <i class="bi bi-trash"></i>
+                                                            </button>
+                                                        </form>
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                {% else %}
+                                    <div class="text-center py-5 text-muted">
+                                        <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                                        <p class="mb-0">{{ mensaje_vacio }}</p>
+                                    </div>
+                                {% endif %}
+                            {% endmacro %}
+
+                            <div class="tab-pane fade show active" id="vista-todas" role="tabpanel">
+                                {{ tabla_facturas(facturas, "No hay facturas registradas en este período.") }}
+                            </div>
+                            <div class="tab-pane fade" id="vista-diarias" role="tabpanel">
+                                {{ tabla_facturas(facturas_diarias, "No hay facturas diarias registradas en este mes.") }}
+                            </div>
+                            <div class="tab-pane fade" id="vista-semanales" role="tabpanel">
+                                {{ tabla_facturas(facturas_semanales, "No hay facturas semanales registradas en este mes.") }}
+                            </div>
+                            <div class="tab-pane fade" id="vista-mensuales" role="tabpanel">
+                                {{ tabla_facturas(facturas_mensuales, "No hay facturas mensuales registradas en este mes.") }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- SECCIÓN DE CIERRE DE MES: Comparativa de Gastos y Pedidos por Distribuidor -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-bakery text-white py-3 d-flex flex-wrap justify-content-between align-items-center">
+                <div>
+                    <h5 class="mb-0 fw-bold"><i class="bi bi-bar-chart-line-fill me-2 text-warning"></i>Balance y Comparativa de Fin de Mes por Distribuidor ({{ mes_filtro }})</h5>
+                    <small class="text-white-50">Compara cuánto se ha pedido y gastado en cada distribuidor durante el mes según tipo de factura y medio de pago</small>
+                </div>
+                <span class="badge bg-warning text-dark fs-6 mt-2 mt-md-0">
+                    Total Mes: {{ total_general_mes | moneda }}
+                </span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover align-middle mb-0">
+                        <thead class="table-dark small text-uppercase">
+                            <tr>
+                                <th class="ps-3">Distribuidor / Rubro</th>
+                                <th class="text-center">Cant. Pedidos</th>
+                                <th class="text-end">Gasto Diario</th>
+                                <th class="text-end">Gasto Semanal</th>
+                                <th class="text-end">Gasto Mensual</th>
+                                <th>Medios de Pago Utilizados</th>
+                                <th class="text-end">Total Mes</th>
+                                <th style="width: 160px;" class="pe-3">% del Gasto</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for d in comparativa_distribuidores %}
+                                {% set porcentaje = ((d.total_gastado / total_general_mes * 100) | round(1)) if total_general_mes > 0 else 0 %}
+                                <tr>
+                                    <td class="ps-3">
+                                        <span class="fw-bold text-dark d-block">{{ d.nombre }}</span>
+                                        <small class="text-muted">{{ d.rubro_insumo }}</small>
+                                        {% if d.resumen_pedidos %}
+                                            <div class="mt-1">
+                                                <small class="text-secondary d-block" style="font-size: 0.78rem;">
+                                                    <strong>Pedidos del mes:</strong> {{ d.resumen_pedidos }}
+                                                </small>
+                                            </div>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">
+                                        <span class="badge rounded-pill bg-secondary fs-6">{{ d.cantidad_pedidos }}</span>
+                                    </td>
+                                    <td class="text-end text-primary fw-semibold">{{ d.gasto_diario | moneda }}</td>
+                                    <td class="text-end text-success fw-semibold">{{ d.gasto_semanal | moneda }}</td>
+                                    <td class="text-end text-warning-emphasis fw-semibold">{{ d.gasto_mensual | moneda }}</td>
+                                    <td>
+                                        <div class="d-flex flex-wrap gap-1 small">
+                                            {% if d.pago_efectivo > 0 %}
+                                                <span class="badge bg-success-subtle text-success border">Efectivo: {{ d.pago_efectivo | moneda }}</span>
+                                            {% endif %}
+                                            {% if d.pago_cheque > 0 %}
+                                                <span class="badge bg-warning-subtle text-warning-emphasis border">Cheque: {{ d.pago_cheque | moneda }}</span>
+                                            {% endif %}
+                                            {% if d.pago_transferencia > 0 %}
+                                                <span class="badge bg-info-subtle text-info-emphasis border">Transf: {{ d.pago_transferencia | moneda }}</span>
+                                            {% endif %}
+                                            {% if d.total_gastado == 0 %}
+                                                <span class="text-muted small">Sin pagos este mes</span>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                    <td class="text-end fw-bold fs-6 text-dark">{{ d.total_gastado | moneda }}</td>
+                                    <td class="pe-3">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <div class="progress flex-grow-1" style="height: 8px;">
+                                                <div class="progress-bar bg-bakery" role="progressbar" style="width: {{ porcentaje }}%;"></div>
+                                            </div>
+                                            <small class="fw-bold text-nowrap">{{ porcentaje }}%</small>
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <footer class="bg-white border-top py-3 mt-auto">
+        <div class="container text-center text-muted small">
+            <strong>Panadería San Michell</strong> — Sistema de Control de Proveedores, Pedidos y Facturación | Desarrollado con Python, Flask y SQLite
+        </div>
+    </footer>
+
+    <!-- Bootstrap JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Script para cambiar la clasificación manual de Factura (Diaria / Semanal / Mensual) -->
+    <script>
+        function seleccionarFrecuencia(tipo) {
+            const inputOculto = document.getElementById('input_tipo_frecuencia');
+            const badge = document.getElementById('badge_frecuencia_activa');
+            inputOculto.value = tipo;
+            badge.textContent = 'Factura ' + tipo;
+
+            badge.className = 'badge fs-6 ';
+            if (tipo === 'Diaria') {
+                badge.classList.add('bg-primary');
+            } else if (tipo === 'Semanal') {
+                badge.classList.add('bg-success');
+            } else {
+                badge.classList.add('bg-warning', 'text-dark');
+            }
+        }
+    </script>
+</body>
+</html>
