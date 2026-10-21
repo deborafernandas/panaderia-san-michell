@@ -3,6 +3,8 @@ venv/
 __pycache__/
 *.pyc
 
-# Ignorar la base de datos local para no subir datos sensibles de prueba si no se desea
+# Ignorar la base de datos local y binarios auxiliares
 *.db
 *.sqlite3
+cloudflared.exe
+
