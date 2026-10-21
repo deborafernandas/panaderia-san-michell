@@ -293,6 +293,11 @@ def formato_moneda(valor):
         return "$0"
 
 
+# Inicializamos la base de datos automáticamente al arrancar la aplicación
+# (Esto es fundamental cuando se despliega en servidores en la nube con Gunicorn como Render)
+init_db()
+
+
 if __name__ == "__main__":
-    init_db()
     app.run(debug=True, port=5000)
+
