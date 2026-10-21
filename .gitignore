@@ -1,0 +1,8 @@
+# Ignorar entorno virtual de Python y archivos compilados
+venv/
+__pycache__/
+*.pyc
+
+# Ignorar la base de datos local para no subir datos sensibles de prueba si no se desea
+*.db
+*.sqlite3
