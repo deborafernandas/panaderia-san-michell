@@ -1,0 +1,68 @@
+/* 
+ * Estilos personalizados para Panadería San Michell
+ * Paleta inspirada en tonos cálidos de panadería artesanal (trigo, café tostado y crema)
+ */
+
+:root {
+    --bakery-primary: #5c3a21;
+    --bakery-secondary: #8b5a2b;
+    --bakery-accent: #e6a15c;
+    --bakery-bg: #faf7f2;
+}
+
+body {
+    background-color: var(--bakery-bg);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.bg-bakery {
+    background-color: var(--bakery-primary) !important;
+}
+
+.text-bakery {
+    color: var(--bakery-primary) !important;
+}
+
+.btn-bakery {
+    background-color: var(--bakery-secondary);
+    color: #ffffff;
+    border: none;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.btn-bakery:hover {
+    background-color: var(--bakery-primary);
+    color: #ffffff;
+}
+
+.bg-gradient-total {
+    background: linear-gradient(135deg, #5c3a21 0%, #8b5a2b 100%);
+}
+
+.card {
+    border-radius: 0.75rem;
+}
+
+.card-header {
+    border-top-left-radius: 0.75rem !important;
+    border-top-right-radius: 0.75rem !important;
+}
+
+.card-metric {
+    transition: transform 0.2s ease;
+}
+
+.card-metric:hover {
+    transform: translateY(-2px);
+}
+
+.nav-pills .nav-link.active {
+    background-color: var(--bakery-secondary);
+}
+
+.nav-pills .nav-link {
+    color: var(--bakery-primary);
+}
