@@ -386,12 +386,39 @@
             <div class="card-header bg-bakery text-white py-3 d-flex flex-wrap justify-content-between align-items-center">
                 <div>
                     <h5 class="mb-0 fw-bold"><i class="bi bi-bar-chart-line-fill me-2 text-warning"></i>Balance y Comparativa de Fin de Mes por Distribuidor ({{ mes_filtro }})</h5>
-                    <small class="text-white-50">Compara cuánto se ha pedido y gastado en cada distribuidor durante el mes según tipo de factura y medio de pago</small>
+                    <small class="text-white-50">Compara visualmente y en tabla cuánto se ha pedido y gastado en cada distribuidor durante el mes</small>
                 </div>
                 <span class="badge bg-warning text-dark fs-6 mt-2 mt-md-0">
                     Total Mes: {{ total_general_mes | moneda }}
                 </span>
             </div>
+
+            <!-- APARTADO DE GRÁFICOS INTERACTIVOS (Chart.js) -->
+            <div class="card-body border-bottom bg-light bg-opacity-50">
+                <div class="row g-4 align-items-center">
+                    <div class="col-lg-8">
+                        <div class="bg-white p-3 rounded-3 shadow-sm border h-100">
+                            <h6 class="fw-bold text-bakery mb-3">
+                                <i class="bi bi-bar-chart-steps me-1"></i>Comparativa de Gastos por Distribuidor (Diario vs Semanal vs Mensual)
+                            </h6>
+                            <div style="position: relative; height: 280px;">
+                                <canvas id="graficoDistribuidores"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-4">
+                        <div class="bg-white p-3 rounded-3 shadow-sm border h-100">
+                            <h6 class="fw-bold text-bakery mb-3">
+                                <i class="bi bi-pie-chart-fill me-1"></i>Distribución por Medio de Pago
+                            </h6>
+                            <div style="position: relative; height: 280px;">
+                                <canvas id="graficoMediosPago"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="card-body p-0">
                 <div class="table-responsive">
                     <table class="table table-striped table-hover align-middle mb-0">
@@ -471,7 +498,10 @@
 
     <!-- Bootstrap JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    <!-- Script para cambiar la clasificación manual de Factura (Diaria / Semanal / Mensual) -->
+    <!-- Chart.js para los gráficos comparativos -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+    <!-- Script para cambiar la clasificación manual de Factura y renderizar los gráficos -->
     <script>
         function seleccionarFrecuencia(tipo) {
             const inputOculto = document.getElementById('input_tipo_frecuencia');
@@ -488,6 +518,125 @@
                 badge.classList.add('bg-warning', 'text-dark');
             }
         }
+
+        // Datos inyectados desde Flask (Jinja2) hacia JavaScript para construir los gráficos
+        const nombresDistribuidores = [
+            {% for d in comparativa_distribuidores %}"{{ d.nombre }}",{% endfor %}
+        ];
+        const gastosDiarios = [
+            {% for d in comparativa_distribuidores %}{{ d.gasto_diario }},{% endfor %}
+        ];
+        const gastosSemanales = [
+            {% for d in comparativa_distribuidores %}{{ d.gasto_semanal }},{% endfor %}
+        ];
+        const gastosMensuales = [
+            {% for d in comparativa_distribuidores %}{{ d.gasto_mensual }},{% endfor %}
+        ];
+        const cantidadPedidos = [
+            {% for d in comparativa_distribuidores %}{{ d.cantidad_pedidos }},{% endfor %}
+        ];
+
+        // 1. Gráfico de Barras Comparativo por Distribuidor
+        const ctxDist = document.getElementById('graficoDistribuidores').getContext('2d');
+        new Chart(ctxDist, {
+            type: 'bar',
+            data: {
+                labels: nombresDistribuidores,
+                datasets: [
+                    {
+                        label: 'Gasto Diario ($)',
+                        data: gastosDiarios,
+                        backgroundColor: 'rgba(13, 110, 253, 0.8)',
+                        borderColor: 'rgb(13, 110, 253)',
+                        borderWidth: 1,
+                        borderRadius: 4
+                    },
+                    {
+                        label: 'Gasto Semanal ($)',
+                        data: gastosSemanales,
+                        backgroundColor: 'rgba(25, 135, 84, 0.8)',
+                        borderColor: 'rgb(25, 135, 84)',
+                        borderWidth: 1,
+                        borderRadius: 4
+                    },
+                    {
+                        label: 'Gasto Mensual ($)',
+                        data: gastosMensuales,
+                        backgroundColor: 'rgba(255, 193, 7, 0.85)',
+                        borderColor: 'rgb(255, 193, 7)',
+                        borderWidth: 1,
+                        borderRadius: 4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top' },
+                    tooltip: {
+                        callbacks: {
+                            afterTitle: function(context) {
+                                const index = context[0].dataIndex;
+                                return 'Total pedidos en el mes: ' + cantidadPedidos[index];
+                            },
+                            label: function(context) {
+                                const valor = context.raw || 0;
+                                return context.dataset.label + ': $' + valor.toLocaleString('es-CL');
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { stacked: false },
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return '$' + value.toLocaleString('es-CL');
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // 2. Gráfico Circular (Dona) por Medio de Pago
+        const ctxPago = document.getElementById('graficoMediosPago').getContext('2d');
+        new Chart(ctxPago, {
+            type: 'doughnut',
+            data: {
+                labels: ['Efectivo', 'Cheque', 'Transferencia'],
+                datasets: [{
+                    data: [
+                        {{ totales_pago['Efectivo'] }},
+                        {{ totales_pago['Cheque'] }},
+                        {{ totales_pago['Transferencia'] }}
+                    ],
+                    backgroundColor: [
+                        'rgba(25, 135, 84, 0.85)',
+                        'rgba(255, 193, 7, 0.85)',
+                        'rgba(13, 202, 240, 0.85)'
+                    ],
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom' },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const valor = context.raw || 0;
+                                return context.label + ': $' + valor.toLocaleString('es-CL');
+                            }
+                        }
+                    }
+                }
+            }
+        });
     </script>
 </body>
 </html>
