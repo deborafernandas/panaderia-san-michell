@@ -173,9 +173,55 @@
                                 <span id="badge_frecuencia_activa" class="badge bg-primary fs-6">Factura Diaria</span>
                             </div>
 
+                            <!-- Apartado para Subir Foto de Factura y Leer Automáticamente (OCR) -->
+                            <div class="p-3 mb-3 rounded-3 border bg-light" style="border-style: dashed !important; border-color: #8b5a2b !important;">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <label for="input_foto_factura" class="form-label fw-bold text-bakery mb-0">
+                                        <i class="bi bi-camera-fill me-1"></i>Subir Foto de Factura (Lectura Automática)
+                                    </label>
+                                    <span class="badge bg-warning text-dark">Autocompletar</span>
+                                </div>
+                                <small class="text-muted d-block mb-2">
+                                    Sube o toma una foto de la factura para rellenar automáticamente el proveedor, N° de factura, fecha, detalle de insumos y monto total.
+                                </small>
+                                <div class="input-group input-group-sm mb-2">
+                                    <input type="file" id="input_foto_factura" class="form-control" accept="image/*" onchange="procesarFotoFactura(this)">
+                                    <button type="button" class="btn btn-outline-secondary" id="btn_limpiar_foto" onclick="limpiarFotoFactura()" style="display: none;" title="Quitar foto">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                </div>
+
+                                <!-- Vista previa y barra de progreso del lector automático -->
+                                <div id="contenedor_ocr_estado" style="display: none;" class="mt-2">
+                                    <div class="d-flex align-items-center gap-2 mb-2">
+                                        <img id="preview_foto_factura" src="" alt="Vista previa factura" class="rounded border shadow-sm" style="max-height: 75px; max-width: 100px; object-fit: cover;">
+                                        <div class="flex-grow-1">
+                                            <div id="ocr_mensaje_estado" class="small fw-semibold text-bakery mb-1">
+                                                <span class="spinner-border spinner-border-sm me-1" role="status"></span>Analizando imagen de la factura...
+                                            </div>
+                                            <div class="progress" style="height: 8px;">
+                                                <div id="ocr_barra_progreso" class="progress-bar progress-bar-striped progress-bar-animated bg-bakery" role="progressbar" style="width: 10%;"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div id="ocr_resumen_resultado" class="alert alert-success py-1 px-2 small mb-1" style="display: none;"></div>
+                                    <div class="text-end">
+                                        <a class="small text-decoration-none text-secondary" data-bs-toggle="collapse" href="#collapseTextoOCR" role="button" aria-expanded="false">
+                                            <i class="bi bi-eye me-1"></i>Ver / copiar texto detectado en la foto
+                                        </a>
+                                    </div>
+                                    <div class="collapse mt-2" id="collapseTextoOCR">
+                                        <textarea id="ocr_texto_completo" class="form-control form-control-sm font-monospace" rows="4" readonly placeholder="Aquí aparecerá el texto leído de la foto..."></textarea>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary w-100 mt-1" onclick="usarTextoCompletoEnDetalle()">
+                                            <i class="bi bi-arrow-down-circle me-1"></i>Pasar este texto al Detalle del Pedido
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div class="mb-3">
                                 <label class="form-label fw-semibold">Distribuidor / Proveedor *</label>
-                                <select name="distribuidor_id" class="form-select" required>
+                                <select id="select_distribuidor_factura" name="distribuidor_id" class="form-select" required>
                                     <option value="" disabled selected>-- Selecciona un distribuidor --</option>
                                     {% for dist in distribuidores %}
                                         <option value="{{ dist.id }}">{{ dist.nombre }} ({{ dist.rubro_insumo }})</option>
@@ -186,17 +232,17 @@
                             <div class="row g-2 mb-3">
                                 <div class="col-sm-6">
                                     <label class="form-label fw-semibold">N° de Factura *</label>
-                                    <input type="text" name="numero_factura" class="form-control" placeholder="Ej: F-10520" required>
+                                    <input type="text" id="input_numero_factura" name="numero_factura" class="form-control" placeholder="Ej: F-10520" required>
                                 </div>
                                 <div class="col-sm-6">
                                     <label class="form-label fw-semibold">Fecha de Emisión *</label>
-                                    <input type="date" name="fecha" class="form-control" value="{{ fecha_hoy }}" required>
+                                    <input type="date" id="input_fecha_factura" name="fecha" class="form-control" value="{{ fecha_hoy }}" required>
                                 </div>
                             </div>
 
                             <div class="mb-3">
                                 <label class="form-label fw-semibold">Detalle del Pedido / Insumos *</label>
-                                <textarea name="detalle_pedido" class="form-control" rows="2" placeholder="Ej: 15 sacos de harina 25kg, 10kg manteca..." required></textarea>
+                                <textarea id="input_detalle_pedido" name="detalle_pedido" class="form-control" rows="2" placeholder="Ej: 15 sacos de harina 25kg, 10kg manteca..." required></textarea>
                             </div>
 
                             <div class="row g-2 mb-3">
@@ -204,12 +250,12 @@
                                     <label class="form-label fw-semibold">Monto a Cancelar ($) *</label>
                                     <div class="input-group">
                                         <span class="input-group-text">$</span>
-                                        <input type="number" name="monto" class="form-control" min="1" step="1" placeholder="Ej: 245000" required>
+                                        <input type="number" id="input_monto_factura" name="monto" class="form-control" min="1" step="1" placeholder="Ej: 245000" required>
                                     </div>
                                 </div>
                                 <div class="col-sm-6">
                                     <label class="form-label fw-semibold">Medio de Pago *</label>
-                                    <select name="medio_pago" class="form-select" required>
+                                    <select id="select_medio_pago" name="medio_pago" class="form-select" required>
                                         <option value="Efectivo">💵 Efectivo</option>
                                         <option value="Cheque">🎫 Cheque</option>
                                         <option value="Transferencia">🏦 Transferencia</option>
@@ -254,6 +300,55 @@
                                 <i class="bi bi-person-plus me-1"></i>Agregar Distribuidor
                             </button>
                         </form>
+
+                        <!-- Lista de Proveedores Ingresados con opción de Modificar o Eliminar -->
+                        <hr class="my-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="mb-0 fw-bold text-dark small text-uppercase">
+                                <i class="bi bi-people-fill me-1 text-bakery"></i>Proveedores Ingresados ({{ distribuidores|length }})
+                            </h6>
+                            <small class="text-muted" style="font-size: 0.75rem;">Modificar o eliminar</small>
+                        </div>
+
+                        {% if distribuidores %}
+                            <div class="list-group list-group-flush border rounded-3 overflow-auto" style="max-height: 260px;">
+                                {% for dist in distribuidores %}
+                                    <div class="list-group-item px-2 py-2 d-flex justify-content-between align-items-center gap-2">
+                                        <div class="text-truncate">
+                                            <span class="fw-semibold d-block small text-dark text-truncate">{{ dist.nombre }}</span>
+                                            <small class="text-muted d-block text-truncate" style="font-size: 0.75rem;">
+                                                {{ dist.rubro_insumo }}
+                                                {% if dist.rut_empresa %} | RUT: {{ dist.rut_empresa }}{% endif %}
+                                                {% if dist.telefono %} | Tel: {{ dist.telefono }}{% endif %}
+                                            </small>
+                                        </div>
+                                        <div class="d-flex align-items-center gap-1 flex-shrink-0">
+                                            <button type="button"
+                                                    class="btn btn-sm btn-outline-primary py-0 px-2"
+                                                    title="Modificar proveedor"
+                                                    data-id="{{ dist.id }}"
+                                                    data-nombre="{{ dist.nombre }}"
+                                                    data-rut="{{ dist.rut_empresa or '' }}"
+                                                    data-telefono="{{ dist.telefono or '' }}"
+                                                    data-rubro="{{ dist.rubro_insumo }}"
+                                                    onclick="abrirModalEditarProveedor(this)">
+                                                <i class="bi bi-pencil-square"></i>
+                                            </button>
+                                            <form action="{{ url_for('eliminar_distribuidor', distribuidor_id=dist.id) }}"
+                                                  method="POST"
+                                                  class="d-inline"
+                                                  onsubmit="return confirm('¿Estás segura de eliminar al proveedor \'{{ dist.nombre }}\' y sus facturas asociadas?');">
+                                                <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2" title="Eliminar proveedor">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <p class="text-muted small text-center mb-0 py-2">No hay proveedores registrados.</p>
+                        {% endif %}
                     </div>
                 </div>
 
@@ -490,6 +585,48 @@
 
     </main>
 
+    <!-- Modal para Modificar Proveedor / Distribuidor -->
+    <div class="modal fade" id="modalEditarProveedor" tabindex="-1" aria-labelledby="modalEditarProveedorLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header bg-bakery text-white">
+                    <h5 class="modal-title fw-bold" id="modalEditarProveedorLabel">
+                        <i class="bi bi-pencil-square me-2"></i>Modificar Proveedor
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <form id="formEditarProveedor" method="POST" action="">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Nombre del Distribuidor *</label>
+                            <input type="text" id="edit_nombre" name="nombre" class="form-control" required>
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-sm-6">
+                                <label class="form-label fw-semibold">RUT / ID Empresa</label>
+                                <input type="text" id="edit_rut_empresa" name="rut_empresa" class="form-control">
+                            </div>
+                            <div class="col-sm-6">
+                                <label class="form-label fw-semibold">Teléfono Contacto</label>
+                                <input type="text" id="edit_telefono" name="telefono" class="form-control">
+                            </div>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label fw-semibold">Insumos o Rubro que provee *</label>
+                            <input type="text" id="edit_rubro_insumo" name="rubro_insumo" class="form-control" required>
+                        </div>
+                    </div>
+                    <div class="modal-footer bg-light">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-bakery fw-bold">
+                            <i class="bi bi-check-circle me-1"></i>Guardar Cambios
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <footer class="bg-white border-top py-3 mt-auto">
         <div class="container text-center text-muted small">
             <strong>Panadería San Michell</strong> — Sistema de Control de Proveedores, Pedidos y Facturación | Desarrollado con Python, Flask y SQLite
@@ -500,9 +637,350 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <!-- Chart.js para los gráficos comparativos -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <!-- Tesseract.js para lectura óptica automática (OCR) de fotos de facturas -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
-    <!-- Script para cambiar la clasificación manual de Factura y renderizar los gráficos -->
+    <!-- Script para cambiar la clasificación manual de Factura, OCR de fotos, edición de proveedores y gráficos -->
     <script>
+        // Lista de distribuidores registrados para coincidencia automática por RUT o Nombre en el OCR
+        const listaDistribuidoresOCR = [
+            {% for dist in distribuidores %}
+            {
+                id: "{{ dist.id }}",
+                nombre: {{ dist.nombre | tojson }},
+                rut: {{ (dist.rut_empresa or '') | tojson }},
+                rubro: {{ dist.rubro_insumo | tojson }}
+            },
+            {% endfor %}
+        ];
+
+        // Función para abrir el modal de edición de proveedor con sus datos actuales
+        function abrirModalEditarProveedor(btn) {
+            const id = btn.getAttribute('data-id');
+            const nombre = btn.getAttribute('data-nombre') || '';
+            const rut = btn.getAttribute('data-rut') || '';
+            const telefono = btn.getAttribute('data-telefono') || '';
+            const rubro = btn.getAttribute('data-rubro') || '';
+
+            const form = document.getElementById('formEditarProveedor');
+            form.action = '/distribuidor/editar/' + id;
+
+            document.getElementById('edit_nombre').value = nombre;
+            document.getElementById('edit_rut_empresa').value = rut;
+            document.getElementById('edit_telefono').value = telefono;
+            document.getElementById('edit_rubro_insumo').value = rubro;
+
+            const modal = new bootstrap.Modal(document.getElementById('modalEditarProveedor'));
+            modal.show();
+        }
+
+        // Preprocesamiento de imagen en Canvas para mejorar la nitidez y contraste antes de leer la factura
+        function preprocesarImagenParaOCR(file) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                const url = URL.createObjectURL(file);
+                img.onload = function() {
+                    const maxDim = 2000;
+                    let width = img.width;
+                    let height = img.height;
+                    if (width > maxDim || height > maxDim) {
+                        if (width > height) {
+                            height = Math.round(height * (maxDim / width));
+                            width = maxDim;
+                        } else {
+                            width = Math.round(width * (maxDim / height));
+                            height = maxDim;
+                        }
+                    }
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    // Convertir a escala de grises con aumento de contraste suave
+                    const imgData = ctx.getImageData(0, 0, width, height);
+                    const data = imgData.data;
+                    const contrast = 1.35;
+                    const intercept = 128 * (1 - contrast);
+                    for (let i = 0; i < data.length; i += 4) {
+                        const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+                        const val = Math.min(255, Math.max(0, gray * contrast + intercept));
+                        data[i] = data[i + 1] = data[i + 2] = val;
+                    }
+                    ctx.putImageData(imgData, 0, 0);
+                    URL.revokeObjectURL(url);
+                    resolve(canvas.toDataURL('image/png'));
+                };
+                img.onerror = reject;
+                img.src = url;
+            });
+        }
+
+        function limpiarFotoFactura() {
+            const input = document.getElementById('input_foto_factura');
+            input.value = '';
+            document.getElementById('btn_limpiar_foto').style.display = 'none';
+            document.getElementById('contenedor_ocr_estado').style.display = 'none';
+            document.getElementById('ocr_resumen_resultado').style.display = 'none';
+            document.getElementById('ocr_texto_completo').value = '';
+        }
+
+        function usarTextoCompletoEnDetalle() {
+            const txt = document.getElementById('ocr_texto_completo').value.trim();
+            if (txt) {
+                const campoDetalle = document.getElementById('input_detalle_pedido');
+                campoDetalle.value = txt.replace(/\n+/g, ' | ');
+                resaltarCampoAutocompletado(campoDetalle);
+            }
+        }
+
+        function resaltarCampoAutocompletado(elemento) {
+            if (!elemento) return;
+            elemento.classList.add('border-success', 'bg-success-subtle');
+            setTimeout(() => {
+                elemento.classList.remove('bg-success-subtle');
+            }, 3500);
+        }
+
+        async function procesarFotoFactura(input) {
+            if (!input.files || !input.files[0]) return;
+            const archivo = input.files[0];
+
+            const btnLimpiar = document.getElementById('btn_limpiar_foto');
+            const contenedorEstado = document.getElementById('contenedor_ocr_estado');
+            const previewImg = document.getElementById('preview_foto_factura');
+            const msgEstado = document.getElementById('ocr_mensaje_estado');
+            const barraProgreso = document.getElementById('ocr_barra_progreso');
+            const resumenResultado = document.getElementById('ocr_resumen_resultado');
+            const textoCompletoArea = document.getElementById('ocr_texto_completo');
+
+            btnLimpiar.style.display = 'inline-block';
+            contenedorEstado.style.display = 'block';
+            resumenResultado.style.display = 'none';
+            previewImg.src = URL.createObjectURL(archivo);
+
+            barraProgreso.style.width = '15%';
+            barraProgreso.classList.add('progress-bar-animated');
+            msgEstado.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Preparando imagen de la factura...';
+
+            try {
+                const imagenProcesada = await preprocesarImagenParaOCR(archivo);
+
+                const resultado = await Tesseract.recognize(
+                    imagenProcesada,
+                    'spa',
+                    {
+                        logger: m => {
+                            if (m.status === 'recognizing text') {
+                                const pct = Math.max(15, Math.round(m.progress * 100));
+                                barraProgreso.style.width = pct + '%';
+                                msgEstado.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status"></span>Leyendo factura automáticamente (${pct}%)...`;
+                            }
+                        }
+                    }
+                );
+
+                barraProgreso.style.width = '100%';
+                barraProgreso.classList.remove('progress-bar-animated');
+
+                const textoCrudo = (resultado.data && resultado.data.text) ? resultado.data.text.trim() : '';
+                textoCompletoArea.value = textoCrudo;
+
+                if (!textoCrudo) {
+                    msgEstado.innerHTML = '<i class="bi bi-exclamation-triangle-fill text-warning me-1"></i>No se logró detectar texto claro. Intenta con una foto más enfocada.';
+                    return;
+                }
+
+                const extraidos = extraerDatosDeFacturaChilena(textoCrudo);
+                msgEstado.innerHTML = '<i class="bi bi-check-circle-fill text-success me-1"></i>¡Lectura completada! Verifica los datos antes de guardar.';
+
+                resumenResultado.style.display = 'block';
+                resumenResultado.innerHTML = '<i class="bi bi-magic me-1"></i><strong>Datos rellenados automáticamente:</strong> ' +
+                    (extraidos.length > 0 ? extraidos.join(', ') : 'Se extrajo el texto en el detalle del pedido.');
+            } catch (err) {
+                console.error('Error al procesar OCR:', err);
+                barraProgreso.classList.remove('progress-bar-animated');
+                msgEstado.innerHTML = '<i class="bi bi-x-circle-fill text-danger me-1"></i>Error al leer la imagen. Puedes intentarlo con otra foto.';
+            }
+        }
+
+        function normalizarRut(str) {
+            return (str || '').replace(/[^0-9kK]/g, '').toUpperCase();
+        }
+
+        function extraerDatosDeFacturaChilena(texto) {
+            const camposDetectados = [];
+            const textoMayus = texto.toUpperCase();
+            const lineas = texto.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 1);
+
+            // 1. Buscar coincidencia con Proveedor / Distribuidor registrado (por RUT o por Nombre)
+            const selectDist = document.getElementById('select_distribuidor_factura');
+            const textoSinPuntos = normalizarRut(texto);
+            let proveedorEncontrado = null;
+
+            for (const dist of listaDistribuidoresOCR) {
+                const rutNorm = normalizarRut(dist.rut);
+                if (rutNorm && rutNorm.length >= 7 && textoSinPuntos.includes(rutNorm)) {
+                    proveedorEncontrado = dist;
+                    break;
+                }
+                const nombreNorm = dist.nombre.toUpperCase().trim();
+                if (nombreNorm.length >= 3 && textoMayus.includes(nombreNorm)) {
+                    proveedorEncontrado = dist;
+                    break;
+                }
+                // Coincidencia por palabras clave del nombre del distribuidor
+                const palabras = nombreNorm.split(/\s+/).filter(p => p.length > 3 && !['PARA', 'DEL', 'SUR', 'LOS', 'LAS', 'DISTRIBUIDORA', 'COMERCIAL', 'SOCIEDAD'].includes(p));
+                if (palabras.length > 0 && palabras.some(p => textoMayus.includes(p))) {
+                    proveedorEncontrado = dist;
+                    break;
+                }
+            }
+
+            if (proveedorEncontrado) {
+                selectDist.value = proveedorEncontrado.id;
+                resaltarCampoAutocompletado(selectDist);
+                camposDetectados.push('Proveedor (' + proveedorEncontrado.nombre + ')');
+            }
+
+            // 2. Extraer Número de Factura / Folio (ej: N° 10421, Nº12345, Folio 8832, F-10421)
+            const inputNumFactura = document.getElementById('input_numero_factura');
+            const regexFolio = /(?:FACTURA(?:\s+ELECTR[OÓ]NICA)?[\s\S]{0,40}?(?:N[°ºoO\.]+|FOLIO)|FOLIO\s*[:#º°]?|N[°ºoO]\s*[:#]?|F\s*-\s*)\s*0*(\d{2,10})/i;
+            const matchFolio = texto.match(regexFolio);
+            if (matchFolio && matchFolio[1]) {
+                inputNumFactura.value = 'F-' + matchFolio[1];
+                resaltarCampoAutocompletado(inputNumFactura);
+                camposDetectados.push('N° Factura (F-' + matchFolio[1] + ')');
+            }
+
+            // 3. Extraer Fecha de Emisión (formatos DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD o "22 de Octubre de 2026")
+            const inputFecha = document.getElementById('input_fecha_factura');
+            let fechaDetectada = null;
+
+            const matchISO = texto.match(/\b(20\d{2})[\/\-](0[1-9]|1[0-2])[\/\-](0[1-9]|[12]\d|3[01])\b/);
+            const matchDMY = texto.match(/\b(0?[1-9]|[12]\d|3[01])[\/\-\.](0?[1-9]|1[0-2])[\/\-\.](20\d{2}|\d{2})\b/);
+
+            const mesesMap = {
+                'ENERO': '01', 'FEBRERO': '02', 'MARZO': '03', 'ABRIL': '04',
+                'MAYO': '05', 'JUNIO': '06', 'JULIO': '07', 'AGOSTO': '08',
+                'SEPTIEMBRE': '09', 'SETIEMBRE': '09', 'OCTUBRE': '10', 'NOVIEMBRE': '11', 'DICIEMBRE': '12',
+                'ENE': '01', 'FEB': '02', 'MAR': '03', 'ABR': '04', 'MAY': '05', 'JUN': '06',
+                'JUL': '07', 'AGO': '08', 'SEP': '09', 'OCT': '10', 'NOV': '11', 'DIC': '12'
+            };
+            const regexFechaTexto = /\b(\d{1,2})\s*(?:DE\s+)?(ENERO|FEBRERO|MARZO|ABRIL|MAYO|JUNIO|JULIO|AGOSTO|SEPTIEMBRE|SETIEMBRE|OCTUBRE|NOVIEMBRE|DICIEMBRE|ENE|FEB|MAR|ABR|MAY|JUN|JUL|AGO|SEP|OCT|NOV|DIC)\s*(?:DE\s+|DEL\s+)?(20\d{2})\b/i;
+            const matchTexto = textoMayus.match(regexFechaTexto);
+
+            if (matchISO) {
+                fechaDetectada = `${matchISO[1]}-${matchISO[2]}-${matchISO[3]}`;
+            } else if (matchTexto) {
+                const dia = matchTexto[1].padStart(2, '0');
+                const mes = mesesMap[matchTexto[2].toUpperCase()];
+                const anio = matchTexto[3];
+                if (mes) fechaDetectada = `${anio}-${mes}-${dia}`;
+            } else if (matchDMY) {
+                const dia = matchDMY[1].padStart(2, '0');
+                const mes = matchDMY[2].padStart(2, '0');
+                let anio = matchDMY[3];
+                if (anio.length === 2) anio = '20' + anio;
+                fechaDetectada = `${anio}-${mes}-${dia}`;
+            }
+
+            if (fechaDetectada) {
+                inputFecha.value = fechaDetectada;
+                resaltarCampoAutocompletado(inputFecha);
+                camposDetectados.push('Fecha (' + fechaDetectada + ')');
+            }
+
+            // 4. Extraer Monto Total a Cancelar ($)
+            const inputMonto = document.getElementById('input_monto_factura');
+            let montoDetectado = null;
+
+            // Primero buscamos líneas con "TOTAL" explícito (Total a Pagar, Monto Total, Total $)
+            const regexTotalExplicito = /(?:MONTO\s+TOTAL|TOTAL\s+A\s+PAGAR|VALOR\s+TOTAL|TOTAL\s+FACTURA|TOTAL)\s*[:\$]*\s*\$?\s*([\d]{1,3}(?:[\.\,]\d{3})+|\d{4,9})/gi;
+            let mTotal;
+            let candidatosTotal = [];
+            while ((mTotal = regexTotalExplicito.exec(texto)) !== null) {
+                const limpio = parseInt(mTotal[1].replace(/[\.\,]/g, ''), 10);
+                if (!isNaN(limpio) && limpio >= 500 && limpio < 100000000) {
+                    candidatosTotal.push(limpio);
+                }
+            }
+
+            if (candidatosTotal.length > 0) {
+                montoDetectado = Math.max(...candidatosTotal);
+            } else {
+                // Buscar montos con formato peso chileno ($ 245.000 o 245.000) excluyendo RUTs
+                const regexPesos = /\$\s*([\d]{1,3}(?:[\.]\d{3})+|\d{4,8})\b/g;
+                let mPeso;
+                let montosPesos = [];
+                while ((mPeso = regexPesos.exec(texto)) !== null) {
+                    const val = parseInt(mPeso[1].replace(/\./g, ''), 10);
+                    if (!isNaN(val) && val >= 500 && val < 50000000) {
+                        montosPesos.push(val);
+                    }
+                }
+                if (montosPesos.length > 0) {
+                    montoDetectado = Math.max(...montosPesos);
+                }
+            }
+
+            if (montoDetectado) {
+                inputMonto.value = montoDetectado;
+                resaltarCampoAutocompletado(inputMonto);
+                camposDetectados.push('Monto ($' + montoDetectado.toLocaleString('es-CL') + ')');
+            }
+
+            // 5. Detectar Medio de Pago si aparece mencionado en la factura
+            const selectPago = document.getElementById('select_medio_pago');
+            if (textoMayus.includes('TRANSFERENCIA')) {
+                selectPago.value = 'Transferencia';
+                resaltarCampoAutocompletado(selectPago);
+                camposDetectados.push('Medio de Pago (Transferencia)');
+            } else if (textoMayus.includes('CHEQUE')) {
+                selectPago.value = 'Cheque';
+                resaltarCampoAutocompletado(selectPago);
+                camposDetectados.push('Medio de Pago (Cheque)');
+            } else if (textoMayus.includes('EFECTIVO') || textoMayus.includes('CONTADO')) {
+                selectPago.value = 'Efectivo';
+                resaltarCampoAutocompletado(selectPago);
+                camposDetectados.push('Medio de Pago (Efectivo)');
+            }
+
+            // 6. Extraer Detalle del Pedido / Insumos (filtrando encabezados tributarios y dejando los productos)
+            const inputDetalle = document.getElementById('input_detalle_pedido');
+            const palabrasIgnorar = [
+                'R.U.T', 'RUT', 'FACTURA ELECTRONICA', 'FACTURA ELECTRÓNICA', 'S.I.I.', 'SII ',
+                'GIRO:', 'DIRECCION', 'DIRECCIÓN', 'COMUNA', 'CIUDAD', 'TELEFONO', 'TELÉFONO',
+                'SEÑOR(ES)', 'SENOR(ES)', 'FECHA EMISION', 'FECHA EMISIÓN', 'TIMBRE ELECTRONICO',
+                'TIMBRE ELECTRÓNICO', 'RESOLUCION', 'RESOLUCIÓN', 'VERIFIQUE DOCUMENTO', 'MONTO NETO',
+                'I.V.A.', 'IVA 19%', 'TOTAL A PAGAR', 'MONTO TOTAL', 'SON:', 'FORMA DE PAGO',
+                'CODIGO', 'CÓDIGO', 'DESCRIPCION', 'DESCRIPCIÓN', 'CANTIDAD', 'PRECIO UNIT'
+            ];
+
+            const lineasProductos = lineas.filter(linea => {
+                const up = linea.toUpperCase();
+                if (up.length < 4) return false;
+                if (palabrasIgnorar.some(p => up.includes(p))) return false;
+                // Ignorar líneas que son solo números o signos
+                if (/^[\d\.\,\-\$\s\/]+$/.test(up)) return false;
+                return true;
+            });
+
+            if (lineasProductos.length > 0) {
+                const resumenDetalle = lineasProductos.slice(0, 8).join(' | ');
+                inputDetalle.value = resumenDetalle;
+                resaltarCampoAutocompletado(inputDetalle);
+                camposDetectados.push('Detalle del Pedido');
+            } else if (texto.trim().length > 0) {
+                inputDetalle.value = lineas.slice(0, 5).join(' | ');
+                resaltarCampoAutocompletado(inputDetalle);
+                camposDetectados.push('Detalle del Pedido');
+            }
+
+            return camposDetectados;
+        }
+
         function seleccionarFrecuencia(tipo) {
             const inputOculto = document.getElementById('input_tipo_frecuencia');
             const badge = document.getElementById('badge_frecuencia_activa');
