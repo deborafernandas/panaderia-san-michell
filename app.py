@@ -5,9 +5,10 @@ Autora: Débora
 Tecnologías: Python + Flask + SQLite3
 """
 
+import json
 import sqlite3
 from datetime import datetime
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 
 app = Flask(__name__)
 # Clave secreta necesaria en Flask para mostrar mensajes alerta (flash messages) en la interfaz
@@ -16,15 +17,126 @@ app.secret_key = "san_michell_clave_secreta_universidad"
 DB_NAME = "san_michell.db"
 
 
+@app.after_request
+def add_no_cache_headers(response):
+    """
+    Evita que el navegador guarde en caché páginas antiguas al agregar, modificar o eliminar proveedores/facturas.
+    """
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+
 def get_db_connection():
     """
     Crea y retorna una conexión a la base de datos SQLite.
     Usamos sqlite3.Row para poder acceder a las columnas por su nombre (ej: factura['monto'])
     como si fueran diccionarios, lo que hace el código mucho más legible.
     """
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(DB_NAME, timeout=30)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL;")
     return conn
+
+
+def obtener_version_datos(conn):
+    row = conn.execute("SELECT valor FROM meta_estado WHERE clave = 'version_datos'").fetchone()
+    try:
+        return int(row["valor"]) if row else 0
+    except (ValueError, TypeError):
+        return 0
+
+
+def actualizar_version_datos(conn):
+    actual = obtener_version_datos(conn)
+    nuevo_ts = max(actual + 1, int(datetime.now().timestamp() * 1000))
+    conn.execute(
+        "INSERT OR REPLACE INTO meta_estado (clave, valor) VALUES ('version_datos', ?)",
+        (str(nuevo_ts),)
+    )
+    return nuevo_ts
+
+
+def exportar_estado_completo(conn):
+    dists = [dict(r) for r in conn.execute("SELECT * FROM distribuidores ORDER BY id ASC").fetchall()]
+    facts = [dict(r) for r in conn.execute("SELECT * FROM facturas ORDER BY id ASC").fetchall()]
+    return {
+        "version_datos": obtener_version_datos(conn),
+        "distribuidores": dists,
+        "facturas": facts,
+    }
+
+
+def aplicar_respaldo_en_db(conn, payload):
+    """
+    Restaura la base de datos desde el respaldo del navegador cuando el contenedor gratuito de Render
+    se reinicia por inactividad o despliegue, evitando que se borren los proveedores o facturas ingresadas.
+    """
+    if not isinstance(payload, dict):
+        return False
+    version_cliente = int(payload.get("version_datos", 0) or 0)
+    version_servidor = obtener_version_datos(conn)
+    if version_cliente <= version_servidor:
+        return False
+
+    dists = payload.get("distribuidores")
+    facts = payload.get("facturas")
+    if not isinstance(dists, list) or not isinstance(facts, list):
+        return False
+
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM facturas")
+    cursor.execute("DELETE FROM distribuidores")
+
+    for d in dists:
+        cursor.execute("""
+            INSERT INTO distribuidores (id, nombre, rut_empresa, telefono, rubro_insumo, fecha_registro)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            d.get("id"),
+            d.get("nombre", ""),
+            d.get("rut_empresa", ""),
+            d.get("telefono", ""),
+            d.get("rubro_insumo", ""),
+            d.get("fecha_registro", datetime.now().strftime("%Y-%m-%d")),
+        ))
+
+    for f in facts:
+        cursor.execute("""
+            INSERT INTO facturas (id, distribuidor_id, numero_factura, fecha, tipo_frecuencia, detalle_pedido, monto, medio_pago)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            f.get("id"),
+            f.get("distribuidor_id"),
+            f.get("numero_factura", ""),
+            f.get("fecha", ""),
+            f.get("tipo_frecuencia", "Diaria"),
+            f.get("detalle_pedido", ""),
+            int(f.get("monto", 0) or 0),
+            f.get("medio_pago", "Efectivo"),
+        ))
+
+    cursor.execute(
+        "INSERT OR REPLACE INTO meta_estado (clave, valor) VALUES ('version_datos', ?)",
+        (str(version_cliente),)
+    )
+    cursor.execute(
+        "INSERT OR REPLACE INTO meta_estado (clave, valor) VALUES ('semilla_cargada', '1')"
+    )
+    conn.commit()
+    return True
+
+
+def restaurar_desde_formulario_si_necesario(conn):
+    respaldo_raw = request.form.get("respaldo_cliente", "").strip()
+    if not respaldo_raw:
+        return
+    try:
+        payload = json.loads(respaldo_raw)
+        aplicar_respaldo_en_db(conn, payload)
+    except Exception:
+        pass
 
 
 def init_db():
@@ -36,6 +148,14 @@ def init_db():
     """
     conn = get_db_connection()
     cursor = conn.cursor()
+
+    # Tabla 0: Control de estado y versión para persistencia
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS meta_estado (
+            clave TEXT PRIMARY KEY,
+            valor TEXT NOT NULL
+        )
+    """)
 
     # Tabla 1: Distribuidores
     cursor.execute("""
@@ -65,32 +185,36 @@ def init_db():
         )
     """)
 
-    # Verificamos si la base de datos está vacía para insertar datos de ejemplo (semilla / seed)
-    # Esto ayuda a ver cómo funciona la comparación desde el primer momento.
-    cursor.execute("SELECT COUNT(*) as total FROM distribuidores")
-    if cursor.fetchone()["total"] == 0:
-        hoy_mes = datetime.now().strftime("%Y-%m")
-        distribuidores_iniciales = [
-            ("Molinos del Sur S.A.", "76.123.456-8", "+56 9 8765 4321", "Harinas y Levaduras", f"{hoy_mes}-01"),
-            ("Lácteos y Mantecas Valle Verde", "77.987.654-3", "+56 9 6543 2109", "Lácteos, Huevos y Manteca", f"{hoy_mes}-01"),
-            ("Distribuidora Dulce Pan", "78.444.555-K", "+56 9 5555 1234", "Azúcar, Chocolate y Repostería", f"{hoy_mes}-02"),
-        ]
-        cursor.executemany("""
-            INSERT INTO distribuidores (nombre, rut_empresa, telefono, rubro_insumo, fecha_registro)
-            VALUES (?, ?, ?, ?, ?)
-        """, distribuidores_iniciales)
+    # Insertar semilla solo una vez cuando se crea la base de datos por primera vez
+    semilla = cursor.execute("SELECT valor FROM meta_estado WHERE clave = 'semilla_cargada'").fetchone()
+    if not semilla:
+        cursor.execute("SELECT COUNT(*) as total FROM distribuidores")
+        if cursor.fetchone()["total"] == 0:
+            hoy_mes = datetime.now().strftime("%Y-%m")
+            distribuidores_iniciales = [
+                ("Molinos del Sur S.A.", "76.123.456-8", "+56 9 8765 4321", "Harinas y Levaduras", f"{hoy_mes}-01"),
+                ("Lácteos y Mantecas Valle Verde", "77.987.654-3", "+56 9 6543 2109", "Lácteos, Huevos y Manteca", f"{hoy_mes}-01"),
+                ("Distribuidora Dulce Pan", "78.444.555-K", "+56 9 5555 1234", "Azúcar, Chocolate y Repostería", f"{hoy_mes}-02"),
+            ]
+            cursor.executemany("""
+                INSERT INTO distribuidores (nombre, rut_empresa, telefono, rubro_insumo, fecha_registro)
+                VALUES (?, ?, ?, ?, ?)
+            """, distribuidores_iniciales)
 
-        facturas_iniciales = [
-            (1, "F-10421", f"{hoy_mes}-03", "Diaria", "10 sacos de harina flor 25kg + 5kg levadura fresca", 245000, "Transferencia"),
-            (1, "F-10489", f"{hoy_mes}-10", "Semanal", "25 sacos de harina panadera + mejorador de masa", 580000, "Cheque"),
-            (2, "F-8832", f"{hoy_mes}-05", "Diaria", "30 bandejas de huevos + 15kg manteca", 165000, "Efectivo"),
-            (2, "F-8910", f"{hoy_mes}-15", "Semanal", "50L leche entera + 20kg queso laminado + crema pastelera", 320000, "Transferencia"),
-            (3, "F-3011", f"{hoy_mes}-20", "Mensual", "Pedido mensual insumos pastelería: cobertura chocolate, azúcar flor y esencias", 490000, "Cheque"),
-        ]
-        cursor.executemany("""
-            INSERT INTO facturas (distribuidor_id, numero_factura, fecha, tipo_frecuencia, detalle_pedido, monto, medio_pago)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, facturas_iniciales)
+            facturas_iniciales = [
+                (1, "F-10421", f"{hoy_mes}-03", "Diaria", "10 sacos de harina flor 25kg + 5kg levadura fresca", 245000, "Transferencia"),
+                (1, "F-10489", f"{hoy_mes}-10", "Semanal", "25 sacos de harina panadera + mejorador de masa", 580000, "Cheque"),
+                (2, "F-8832", f"{hoy_mes}-05", "Diaria", "30 bandejas de huevos + 15kg manteca", 165000, "Efectivo"),
+                (2, "F-8910", f"{hoy_mes}-15", "Semanal", "50L leche entera + 20kg queso laminado + crema pastelera", 320000, "Transferencia"),
+                (3, "F-3011", f"{hoy_mes}-20", "Mensual", "Pedido mensual insumos pastelería: cobertura chocolate, azúcar flor y esencias", 490000, "Cheque"),
+            ]
+            cursor.executemany("""
+                INSERT INTO facturas (distribuidor_id, numero_factura, fecha, tipo_frecuencia, detalle_pedido, monto, medio_pago)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, facturas_iniciales)
+
+        cursor.execute("INSERT OR REPLACE INTO meta_estado (clave, valor) VALUES ('semilla_cargada', '1')")
+        cursor.execute("INSERT OR IGNORE INTO meta_estado (clave, valor) VALUES ('version_datos', '0')")
 
     conn.commit()
     conn.close()
@@ -171,6 +295,7 @@ def index():
         ORDER BY total_gastado DESC
     """, (mes_filtro,)).fetchall()
 
+    estado_respaldo = exportar_estado_completo(conn)
     conn.close()
 
     return render_template(
@@ -186,8 +311,23 @@ def index():
         comparativa_distribuidores=comparativa_distribuidores,
         mes_filtro=mes_filtro,
         distribuidor_filtro=distribuidor_filtro,
-        fecha_hoy=datetime.now().strftime("%Y-%m-%d")
+        fecha_hoy=datetime.now().strftime("%Y-%m-%d"),
+        estado_respaldo=estado_respaldo
     )
+
+
+@app.route("/api/sincronizar", methods=["POST"])
+def api_sincronizar():
+    """
+    Sincroniza automáticamente el respaldo del navegador con el servidor si el contenedor gratuito
+    de Render se reinició tras un período de inactividad o despliegue.
+    """
+    payload = request.get_json(silent=True) or {}
+    conn = get_db_connection()
+    restaurado = aplicar_respaldo_en_db(conn, payload)
+    estado = exportar_estado_completo(conn)
+    conn.close()
+    return jsonify({"ok": True, "restaurado": restaurado, "estado": estado})
 
 
 @app.route("/distribuidor/nuevo", methods=["POST"])
@@ -206,10 +346,12 @@ def nuevo_distribuidor():
         return redirect(url_for("index"))
 
     conn = get_db_connection()
+    restaurar_desde_formulario_si_necesario(conn)
     conn.execute("""
         INSERT INTO distribuidores (nombre, rut_empresa, telefono, rubro_insumo, fecha_registro)
         VALUES (?, ?, ?, ?, ?)
     """, (nombre, rut_empresa, telefono, rubro_insumo, fecha_registro))
+    actualizar_version_datos(conn)
     conn.commit()
     conn.close()
 
@@ -242,10 +384,12 @@ def nueva_factura():
         return redirect(url_for("index"))
 
     conn = get_db_connection()
+    restaurar_desde_formulario_si_necesario(conn)
     conn.execute("""
         INSERT INTO facturas (distribuidor_id, numero_factura, fecha, tipo_frecuencia, detalle_pedido, monto, medio_pago)
         VALUES (?, ?, ?, ?, ?, ?, ?)
     """, (int(distribuidor_id), numero_factura, fecha, tipo_frecuencia, detalle_pedido, monto_entero, medio_pago))
+    actualizar_version_datos(conn)
     conn.commit()
     conn.close()
 
@@ -279,11 +423,13 @@ def editar_factura(factura_id):
         return redirect(url_for("index"))
 
     conn = get_db_connection()
+    restaurar_desde_formulario_si_necesario(conn)
     conn.execute("""
         UPDATE facturas
         SET distribuidor_id = ?, numero_factura = ?, fecha = ?, tipo_frecuencia = ?, detalle_pedido = ?, monto = ?, medio_pago = ?
         WHERE id = ?
     """, (int(distribuidor_id), numero_factura, fecha, tipo_frecuencia, detalle_pedido, monto_entero, medio_pago, factura_id))
+    actualizar_version_datos(conn)
     conn.commit()
     conn.close()
 
@@ -298,7 +444,9 @@ def eliminar_factura(factura_id):
     Permite eliminar una factura en caso de error de digitación.
     """
     conn = get_db_connection()
+    restaurar_desde_formulario_si_necesario(conn)
     conn.execute("DELETE FROM facturas WHERE id = ?", (factura_id,))
+    actualizar_version_datos(conn)
     conn.commit()
     conn.close()
 
@@ -321,11 +469,13 @@ def editar_distribuidor(distribuidor_id):
         return redirect(url_for("index"))
 
     conn = get_db_connection()
+    restaurar_desde_formulario_si_necesario(conn)
     conn.execute("""
         UPDATE distribuidores
         SET nombre = ?, rut_empresa = ?, telefono = ?, rubro_insumo = ?
         WHERE id = ?
     """, (nombre, rut_empresa, telefono, rubro_insumo, distribuidor_id))
+    actualizar_version_datos(conn)
     conn.commit()
     conn.close()
 
@@ -339,8 +489,10 @@ def eliminar_distribuidor(distribuidor_id):
     Permite eliminar un distribuidor y sus facturas asociadas.
     """
     conn = get_db_connection()
+    restaurar_desde_formulario_si_necesario(conn)
     conn.execute("DELETE FROM facturas WHERE distribuidor_id = ?", (distribuidor_id,))
     conn.execute("DELETE FROM distribuidores WHERE id = ?", (distribuidor_id,))
+    actualizar_version_datos(conn)
     conn.commit()
     conn.close()
 
