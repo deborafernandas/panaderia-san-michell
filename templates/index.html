@@ -764,6 +764,89 @@
     <!-- Script para cambiar la clasificación manual de Factura, OCR de fotos, edición de proveedores/facturas y gráficos -->
     <script>
         let rotacionActualFoto = 0;
+        const CLAVE_RESPALDO_LOCAL = 'panaderia_san_michell_respaldo_v1';
+        const CLAVE_BORRADOR_FACTURA = 'panaderia_san_michell_borrador_factura';
+        const estadoServidorRespaldo = {{ (estado_respaldo or {'version_datos': 0, 'distribuidores': [], 'facturas': []}) | tojson }};
+
+        // Sincronización automática para que los proveedores y facturas nunca se borren aunque Render reinicie el servidor gratuito
+        (function sincronizarPersistenciaAutomatica() {
+            try {
+                const rawLocal = localStorage.getItem(CLAVE_RESPALDO_LOCAL);
+                const localData = rawLocal ? JSON.parse(rawLocal) : null;
+                const vServidor = Number(estadoServidorRespaldo.version_datos || 0);
+                const vLocal = localData ? Number(localData.version_datos || 0) : 0;
+
+                if (vServidor >= vLocal && vServidor > 0) {
+                    localStorage.setItem(CLAVE_RESPALDO_LOCAL, JSON.stringify(estadoServidorRespaldo));
+                } else if (localData && vLocal > vServidor) {
+                    fetch('/api/sincronizar', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(localData)
+                    })
+                    .then(r => r.json())
+                    .then(res => {
+                        if (res && res.restaurado) {
+                            window.location.reload();
+                        }
+                    })
+                    .catch(err => console.error('Error sincronizando respaldo:', err));
+                }
+            } catch (e) {
+                console.error('Error en respaldo local:', e);
+            }
+        })();
+
+        // Adjuntar respaldo actual a todos los formularios POST y conservar borrador de factura al gestionar proveedores
+        document.addEventListener('DOMContentLoaded', function() {
+            // Restaurar borrador de factura si se recargó la página por agregar/editar/eliminar un proveedor
+            try {
+                const borradorRaw = sessionStorage.getItem(CLAVE_BORRADOR_FACTURA);
+                if (borradorRaw) {
+                    const b = JSON.parse(borradorRaw);
+                    sessionStorage.removeItem(CLAVE_BORRADOR_FACTURA);
+                    if (b.tipo_frecuencia) seleccionarFrecuencia(b.tipo_frecuencia);
+                    if (b.distribuidor_id) document.getElementById('select_distribuidor_factura').value = b.distribuidor_id;
+                    if (b.numero_factura) document.getElementById('input_numero_factura').value = b.numero_factura;
+                    if (b.fecha) document.getElementById('input_fecha_factura').value = b.fecha;
+                    if (b.detalle_pedido) document.getElementById('input_detalle_pedido').value = b.detalle_pedido;
+                    if (b.monto) document.getElementById('input_monto_factura').value = b.monto;
+                    if (b.medio_pago) document.getElementById('select_medio_pago').value = b.medio_pago;
+                }
+            } catch (e) {}
+
+            document.querySelectorAll('form[method="POST"]').forEach(form => {
+                form.addEventListener('submit', function() {
+                    try {
+                        let inputResp = form.querySelector('input[name="respaldo_cliente"]');
+                        if (!inputResp) {
+                            inputResp = document.createElement('input');
+                            inputResp.type = 'hidden';
+                            inputResp.name = 'respaldo_cliente';
+                            form.appendChild(inputResp);
+                        }
+                        const guardado = localStorage.getItem(CLAVE_RESPALDO_LOCAL);
+                        inputResp.value = guardado || JSON.stringify(estadoServidorRespaldo);
+
+                        // Si el formulario es de proveedores, guardar lo que se estaba escribiendo en Nueva Factura
+                        if (form.action && form.action.includes('/distribuidor/')) {
+                            const borrador = {
+                                tipo_frecuencia: document.getElementById('input_tipo_frecuencia')?.value || 'Diaria',
+                                distribuidor_id: document.getElementById('select_distribuidor_factura')?.value || '',
+                                numero_factura: document.getElementById('input_numero_factura')?.value || '',
+                                fecha: document.getElementById('input_fecha_factura')?.value || '',
+                                detalle_pedido: document.getElementById('input_detalle_pedido')?.value || '',
+                                monto: document.getElementById('input_monto_factura')?.value || '',
+                                medio_pago: document.getElementById('select_medio_pago')?.value || 'Efectivo'
+                            };
+                            sessionStorage.setItem(CLAVE_BORRADOR_FACTURA, JSON.stringify(borrador));
+                        } else if (form.action && form.action.includes('/factura/nueva')) {
+                            sessionStorage.removeItem(CLAVE_BORRADOR_FACTURA);
+                        }
+                    } catch (e) {}
+                });
+            });
+        });
 
         // Lista de distribuidores registrados para coincidencia automática por RUT o Nombre en el OCR
         const listaDistribuidoresOCR = [
