@@ -5,6 +5,9 @@ __pycache__/
 
 # Ignorar la base de datos local y binarios auxiliares
 *.db
+*.db-wal
+*.db-shm
 *.sqlite3
+san_michell_respaldo.json
 cloudflared.exe
 

@@ -6,7 +6,10 @@ Tecnologías: Python + Flask + SQLite3
 """
 
 import json
+import os
 import sqlite3
+import time
+import urllib.request
 from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 
@@ -15,6 +18,12 @@ app = Flask(__name__)
 app.secret_key = "san_michell_clave_secreta_universidad"
 
 DB_NAME = "san_michell.db"
+LOCAL_BACKUP_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "san_michell_respaldo.json")
+CLOUD_BACKUP_URL = os.environ.get(
+    "SAN_MICHELL_CLOUD_URL",
+    "https://textdb.dev/api/data/panaderia-san-michell-db-v1-debora"
+)
+_ULTIMA_CONSULTA_NUBE = 0.0
 
 
 @app.after_request
@@ -128,13 +137,98 @@ def aplicar_respaldo_en_db(conn, payload):
     return True
 
 
+def cargar_respaldo_nube():
+    """
+    Descarga el respaldo persistente desde la nube para que los proveedores y facturas
+    se mantengan guardados aunque Render reinicie o formatee el contenedor gratuito,
+    y para que se sincronicen automáticamente entre distintos computadores o celulares.
+    """
+    try:
+        req = urllib.request.Request(
+            CLOUD_BACKUP_URL,
+            headers={"User-Agent": "Mozilla/5.0"}
+        )
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            raw = resp.read().decode("utf-8").strip()
+            if raw:
+                data = json.loads(raw)
+                if isinstance(data, dict) and "version_datos" in data:
+                    return data
+    except Exception as e:
+        print(f"Aviso: No se pudo leer respaldo en la nube: {e}")
+
+    try:
+        if os.path.exists(LOCAL_BACKUP_FILE):
+            with open(LOCAL_BACKUP_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict) and "version_datos" in data:
+                    return data
+    except Exception:
+        pass
+    return None
+
+
+def guardar_respaldo_nube(conn):
+    """
+    Guarda inmediatamente el estado actual de proveedores y facturas en la nube
+    cada vez que se ingresa, modifica o elimina un registro.
+    """
+    global _ULTIMA_CONSULTA_NUBE
+    estado = exportar_estado_completo(conn)
+    raw_json = json.dumps(estado, ensure_ascii=True)
+
+    try:
+        with open(LOCAL_BACKUP_FILE, "w", encoding="utf-8") as f:
+            f.write(raw_json)
+    except Exception:
+        pass
+
+    try:
+        req = urllib.request.Request(
+            CLOUD_BACKUP_URL,
+            data=raw_json.encode("ascii"),
+            headers={
+                "Content-Type": "text/plain",
+                "User-Agent": "Mozilla/5.0"
+            },
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            resp.read()
+        _ULTIMA_CONSULTA_NUBE = time.time()
+        return True
+    except Exception as e:
+        print(f"Aviso: No se pudo guardar respaldo en la nube: {e}")
+        return False
+
+
+def sincronizar_desde_nube_si_necesario(conn, forzar=False):
+    """
+    Verifica si existe una versión más reciente de los proveedores y facturas en la nube
+    y la restaura en la base de datos SQLite local antes de mostrar o modificar datos.
+    """
+    global _ULTIMA_CONSULTA_NUBE
+    ahora = time.time()
+    version_local = obtener_version_datos(conn)
+    if not forzar and version_local > 0 and (ahora - _ULTIMA_CONSULTA_NUBE) < 3.0:
+        return False
+
+    _ULTIMA_CONSULTA_NUBE = ahora
+    respaldo_nube = cargar_respaldo_nube()
+    if respaldo_nube:
+        return aplicar_respaldo_en_db(conn, respaldo_nube)
+    return False
+
+
 def restaurar_desde_formulario_si_necesario(conn):
+    sincronizar_desde_nube_si_necesario(conn, forzar=True)
     respaldo_raw = request.form.get("respaldo_cliente", "").strip()
     if not respaldo_raw:
         return
     try:
         payload = json.loads(respaldo_raw)
-        aplicar_respaldo_en_db(conn, payload)
+        if aplicar_respaldo_en_db(conn, payload):
+            guardar_respaldo_nube(conn)
     except Exception:
         pass
 
@@ -184,8 +278,12 @@ def init_db():
             FOREIGN KEY (distribuidor_id) REFERENCES distribuidores (id) ON DELETE CASCADE
         )
     """)
+    conn.commit()
 
-    # Insertar semilla solo una vez cuando se crea la base de datos por primera vez
+    # Primero intentamos restaurar desde el respaldo en la nube para no reiniciar a los datos de fábrica
+    sincronizar_desde_nube_si_necesario(conn, forzar=True)
+
+    # Insertar semilla solo una vez si no existe ningún respaldo previo en la nube ni en la base local
     semilla = cursor.execute("SELECT valor FROM meta_estado WHERE clave = 'semilla_cargada'").fetchone()
     if not semilla:
         cursor.execute("SELECT COUNT(*) as total FROM distribuidores")
@@ -214,7 +312,7 @@ def init_db():
             """, facturas_iniciales)
 
         cursor.execute("INSERT OR REPLACE INTO meta_estado (clave, valor) VALUES ('semilla_cargada', '1')")
-        cursor.execute("INSERT OR IGNORE INTO meta_estado (clave, valor) VALUES ('version_datos', '0')")
+        cursor.execute("INSERT OR IGNORE INTO meta_estado (clave, valor) VALUES ('version_datos', '1')")
 
     conn.commit()
     conn.close()
@@ -228,6 +326,7 @@ def index():
     las tablas de facturas y el comparador de fin de mes por distribuidor.
     """
     conn = get_db_connection()
+    sincronizar_desde_nube_si_necesario(conn)
 
     # Mes seleccionado en el filtro para el cierre/comparación de fin de mes (por defecto el mes actual YYYY-MM)
     mes_actual = datetime.now().strftime("%Y-%m")
@@ -319,12 +418,15 @@ def index():
 @app.route("/api/sincronizar", methods=["POST"])
 def api_sincronizar():
     """
-    Sincroniza automáticamente el respaldo del navegador con el servidor si el contenedor gratuito
+    Sincroniza automáticamente el respaldo del navegador y la nube con el servidor si el contenedor gratuito
     de Render se reinició tras un período de inactividad o despliegue.
     """
     payload = request.get_json(silent=True) or {}
     conn = get_db_connection()
+    sincronizar_desde_nube_si_necesario(conn, forzar=True)
     restaurado = aplicar_respaldo_en_db(conn, payload)
+    if restaurado:
+        guardar_respaldo_nube(conn)
     estado = exportar_estado_completo(conn)
     conn.close()
     return jsonify({"ok": True, "restaurado": restaurado, "estado": estado})
@@ -353,6 +455,7 @@ def nuevo_distribuidor():
     """, (nombre, rut_empresa, telefono, rubro_insumo, fecha_registro))
     actualizar_version_datos(conn)
     conn.commit()
+    guardar_respaldo_nube(conn)
     conn.close()
 
     flash(f"Distribuidor '{nombre}' agregado correctamente a Panadería San Michell.", "success")
@@ -391,6 +494,7 @@ def nueva_factura():
     """, (int(distribuidor_id), numero_factura, fecha, tipo_frecuencia, detalle_pedido, monto_entero, medio_pago))
     actualizar_version_datos(conn)
     conn.commit()
+    guardar_respaldo_nube(conn)
     conn.close()
 
     # Redirigir manteniendo el mes de la factura recién ingresada para que el usuario la vea de inmediato
@@ -431,6 +535,7 @@ def editar_factura(factura_id):
     """, (int(distribuidor_id), numero_factura, fecha, tipo_frecuencia, detalle_pedido, monto_entero, medio_pago, factura_id))
     actualizar_version_datos(conn)
     conn.commit()
+    guardar_respaldo_nube(conn)
     conn.close()
 
     mes_factura = fecha[:7]
@@ -448,6 +553,7 @@ def eliminar_factura(factura_id):
     conn.execute("DELETE FROM facturas WHERE id = ?", (factura_id,))
     actualizar_version_datos(conn)
     conn.commit()
+    guardar_respaldo_nube(conn)
     conn.close()
 
     flash("Factura eliminada correctamente.", "warning")
@@ -477,6 +583,7 @@ def editar_distribuidor(distribuidor_id):
     """, (nombre, rut_empresa, telefono, rubro_insumo, distribuidor_id))
     actualizar_version_datos(conn)
     conn.commit()
+    guardar_respaldo_nube(conn)
     conn.close()
 
     flash(f"Proveedor '{nombre}' modificado correctamente.", "success")
@@ -494,6 +601,7 @@ def eliminar_distribuidor(distribuidor_id):
     conn.execute("DELETE FROM distribuidores WHERE id = ?", (distribuidor_id,))
     actualizar_version_datos(conn)
     conn.commit()
+    guardar_respaldo_nube(conn)
     conn.close()
 
     flash("Distribuidor eliminado del registro.", "warning")

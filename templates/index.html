@@ -776,7 +776,7 @@
                 const vServidor = Number(estadoServidorRespaldo.version_datos || 0);
                 const vLocal = localData ? Number(localData.version_datos || 0) : 0;
 
-                if (vServidor >= vLocal && vServidor > 0) {
+                if (!localData || vServidor >= vLocal) {
                     localStorage.setItem(CLAVE_RESPALDO_LOCAL, JSON.stringify(estadoServidorRespaldo));
                 } else if (localData && vLocal > vServidor) {
                     fetch('/api/sincronizar', {
@@ -788,6 +788,8 @@
                     .then(res => {
                         if (res && res.restaurado) {
                             window.location.reload();
+                        } else if (res && res.estado) {
+                            localStorage.setItem(CLAVE_RESPALDO_LOCAL, JSON.stringify(res.estado));
                         }
                     })
                     .catch(err => console.error('Error sincronizando respaldo:', err));
@@ -826,7 +828,16 @@
                             form.appendChild(inputResp);
                         }
                         const guardado = localStorage.getItem(CLAVE_RESPALDO_LOCAL);
-                        inputResp.value = guardado || JSON.stringify(estadoServidorRespaldo);
+                        let mejorRespaldo = JSON.stringify(estadoServidorRespaldo);
+                        if (guardado) {
+                            try {
+                                const parsed = JSON.parse(guardado);
+                                if (Number(parsed.version_datos || 0) >= Number(estadoServidorRespaldo.version_datos || 0)) {
+                                    mejorRespaldo = guardado;
+                                }
+                            } catch (e) {}
+                        }
+                        inputResp.value = mejorRespaldo;
 
                         // Si el formulario es de proveedores, guardar lo que se estaba escribiendo en Nueva Factura
                         if (form.action && form.action.includes('/distribuidor/')) {
