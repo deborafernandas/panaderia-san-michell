@@ -269,6 +269,33 @@ def eliminar_factura(factura_id):
     return redirect(url_for("index"))
 
 
+@app.route("/distribuidor/editar/<int:distribuidor_id>", methods=["POST"])
+def editar_distribuidor(distribuidor_id):
+    """
+    Permite modificar los datos de un proveedor/distribuidor ya registrado.
+    """
+    nombre = request.form.get("nombre", "").strip()
+    rut_empresa = request.form.get("rut_empresa", "").strip()
+    telefono = request.form.get("telefono", "").strip()
+    rubro_insumo = request.form.get("rubro_insumo", "").strip()
+
+    if not nombre or not rubro_insumo:
+        flash("El nombre del proveedor y su rubro de insumos son obligatorios.", "danger")
+        return redirect(url_for("index"))
+
+    conn = get_db_connection()
+    conn.execute("""
+        UPDATE distribuidores
+        SET nombre = ?, rut_empresa = ?, telefono = ?, rubro_insumo = ?
+        WHERE id = ?
+    """, (nombre, rut_empresa, telefono, rubro_insumo, distribuidor_id))
+    conn.commit()
+    conn.close()
+
+    flash(f"Proveedor '{nombre}' modificado correctamente.", "success")
+    return redirect(url_for("index"))
+
+
 @app.route("/distribuidor/eliminar/<int:distribuidor_id>", methods=["POST"])
 def eliminar_distribuidor(distribuidor_id):
     """
