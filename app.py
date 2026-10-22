@@ -255,6 +255,43 @@ def nueva_factura():
     return redirect(url_for("index", mes=mes_factura))
 
 
+@app.route("/factura/editar/<int:factura_id>", methods=["POST"])
+def editar_factura(factura_id):
+    """
+    Permite modificar el detalle del pedido y los datos de una factura ya ingresada.
+    """
+    distribuidor_id = request.form.get("distribuidor_id")
+    numero_factura = request.form.get("numero_factura", "").strip()
+    fecha = request.form.get("fecha", "").strip()
+    tipo_frecuencia = request.form.get("tipo_frecuencia", "").strip()
+    detalle_pedido = request.form.get("detalle_pedido", "").strip()
+    monto = request.form.get("monto", "0").strip()
+    medio_pago = request.form.get("medio_pago", "").strip()
+
+    if not (distribuidor_id and numero_factura and fecha and tipo_frecuencia and detalle_pedido and monto and medio_pago):
+        flash("Todos los campos de la factura y el detalle del pedido son obligatorios.", "danger")
+        return redirect(url_for("index"))
+
+    try:
+        monto_entero = int(float(monto))
+    except ValueError:
+        flash("El monto a cancelar debe ser un valor numérico válido.", "danger")
+        return redirect(url_for("index"))
+
+    conn = get_db_connection()
+    conn.execute("""
+        UPDATE facturas
+        SET distribuidor_id = ?, numero_factura = ?, fecha = ?, tipo_frecuencia = ?, detalle_pedido = ?, monto = ?, medio_pago = ?
+        WHERE id = ?
+    """, (int(distribuidor_id), numero_factura, fecha, tipo_frecuencia, detalle_pedido, monto_entero, medio_pago, factura_id))
+    conn.commit()
+    conn.close()
+
+    mes_factura = fecha[:7]
+    flash(f"Factura N° {numero_factura} actualizada correctamente.", "success")
+    return redirect(url_for("index", mes=mes_factura))
+
+
 @app.route("/factura/eliminar/<int:factura_id>", methods=["POST"])
 def eliminar_factura(factura_id):
     """
