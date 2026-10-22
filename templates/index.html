@@ -191,29 +191,37 @@
                                     </button>
                                 </div>
 
-                                <!-- Vista previa y barra de progreso del lector automático -->
+                                <!-- Vista previa mejorada y barra de progreso del lector automático -->
                                 <div id="contenedor_ocr_estado" style="display: none;" class="mt-2">
-                                    <div class="d-flex align-items-center gap-2 mb-2">
-                                        <img id="preview_foto_factura" src="" alt="Vista previa factura" class="rounded border shadow-sm" style="max-height: 75px; max-width: 100px; object-fit: cover;">
-                                        <div class="flex-grow-1">
-                                            <div id="ocr_mensaje_estado" class="small fw-semibold text-bakery mb-1">
-                                                <span class="spinner-border spinner-border-sm me-1" role="status"></span>Analizando imagen de la factura...
-                                            </div>
-                                            <div class="progress" style="height: 8px;">
-                                                <div id="ocr_barra_progreso" class="progress-bar progress-bar-striped progress-bar-animated bg-bakery" role="progressbar" style="width: 10%;"></div>
-                                            </div>
+                                    <div class="bg-white p-2 rounded border shadow-sm mb-2 text-center position-relative">
+                                        <img id="preview_foto_factura" src="" alt="Vista previa factura" class="rounded img-fluid" style="max-height: 220px; width: 100%; object-fit: contain; cursor: zoom-in;" onclick="abrirModalZoomFoto()" title="Haz clic para ver la foto en grande">
+                                        <div class="d-flex justify-content-center gap-2 mt-2">
+                                            <button type="button" class="btn btn-sm btn-outline-dark py-0 px-2" onclick="abrirModalZoomFoto()">
+                                                <i class="bi bi-zoom-in me-1"></i>Ver foto en grande
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="rotarYReleerFoto()">
+                                                <i class="bi bi-arrow-clockwise me-1"></i>Girar foto 90°
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="mb-2">
+                                        <div id="ocr_mensaje_estado" class="small fw-semibold text-bakery mb-1">
+                                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>Mejorando nitidez y analizando factura...
+                                        </div>
+                                        <div class="progress" style="height: 8px;">
+                                            <div id="ocr_barra_progreso" class="progress-bar progress-bar-striped progress-bar-animated bg-bakery" role="progressbar" style="width: 10%;"></div>
                                         </div>
                                     </div>
                                     <div id="ocr_resumen_resultado" class="alert alert-success py-1 px-2 small mb-1" style="display: none;"></div>
                                     <div class="text-end">
                                         <a class="small text-decoration-none text-secondary" data-bs-toggle="collapse" href="#collapseTextoOCR" role="button" aria-expanded="false">
-                                            <i class="bi bi-eye me-1"></i>Ver / copiar texto detectado en la foto
+                                            <i class="bi bi-eye me-1"></i>Ver / editar texto detectado en la foto
                                         </a>
                                     </div>
                                     <div class="collapse mt-2" id="collapseTextoOCR">
-                                        <textarea id="ocr_texto_completo" class="form-control form-control-sm font-monospace" rows="4" readonly placeholder="Aquí aparecerá el texto leído de la foto..."></textarea>
+                                        <textarea id="ocr_texto_completo" class="form-control form-control-sm font-monospace" rows="4" placeholder="Aquí aparecerá el texto limpio leído de la foto (puedes editarlo antes de pasarlo)..."></textarea>
                                         <button type="button" class="btn btn-sm btn-outline-secondary w-100 mt-1" onclick="usarTextoCompletoEnDetalle()">
-                                            <i class="bi bi-arrow-down-circle me-1"></i>Pasar este texto al Detalle del Pedido
+                                            <i class="bi bi-arrow-down-circle me-1"></i>Pasar este texto limpio al Detalle del Pedido
                                         </button>
                                     </div>
                                 </div>
@@ -241,8 +249,14 @@
                             </div>
 
                             <div class="mb-3">
-                                <label class="form-label fw-semibold">Detalle del Pedido / Insumos *</label>
-                                <textarea id="input_detalle_pedido" name="detalle_pedido" class="form-control" rows="2" placeholder="Ej: 15 sacos de harina 25kg, 10kg manteca..." required></textarea>
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label fw-semibold mb-0">Detalle del Pedido / Insumos *</label>
+                                    <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-secondary" onclick="limpiarCampoDetalleActual()" title="Quitar tildes y símbolos raros del detalle">
+                                        <i class="bi bi-eraser me-1"></i>Limpiar símbolos/tildes
+                                    </button>
+                                </div>
+                                <textarea id="input_detalle_pedido" name="detalle_pedido" class="form-control" rows="3" placeholder="Ej: 15 sacos de harina 25kg, 10kg manteca..." required></textarea>
+                                <small class="text-muted" style="font-size: 0.75rem;">Puedes editar libremente este detalle ahora o modificarlo después de guardar la factura.</small>
                             </div>
 
                             <div class="row g-2 mb-3">
@@ -438,11 +452,27 @@
                                                         {{ f.monto | moneda }}
                                                     </td>
                                                     <td class="text-center pe-3">
-                                                        <form action="{{ url_for('eliminar_factura', factura_id=f.id) }}" method="POST" onsubmit="return confirm('¿Eliminar la factura {{ f.numero_factura }}?');">
-                                                            <button type="submit" class="btn btn-sm btn-outline-danger border-0" title="Eliminar factura">
-                                                                <i class="bi bi-trash"></i>
+                                                        <div class="d-flex justify-content-center align-items-center gap-1">
+                                                            <button type="button"
+                                                                    class="btn btn-sm btn-outline-primary border-0"
+                                                                    title="Editar detalle y datos de la factura"
+                                                                    data-id="{{ f.id }}"
+                                                                    data-distribuidor="{{ f.distribuidor_id }}"
+                                                                    data-numero="{{ f.numero_factura }}"
+                                                                    data-fecha="{{ f.fecha }}"
+                                                                    data-frecuencia="{{ f.tipo_frecuencia }}"
+                                                                    data-detalle="{{ f.detalle_pedido }}"
+                                                                    data-monto="{{ f.monto }}"
+                                                                    data-pago="{{ f.medio_pago }}"
+                                                                    onclick="abrirModalEditarFactura(this)">
+                                                                <i class="bi bi-pencil-square"></i>
                                                             </button>
-                                                        </form>
+                                                            <form action="{{ url_for('eliminar_factura', factura_id=f.id) }}" method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar la factura {{ f.numero_factura }}?');">
+                                                                <button type="submit" class="btn btn-sm btn-outline-danger border-0" title="Eliminar factura">
+                                                                    <i class="bi bi-trash"></i>
+                                                                </button>
+                                                            </form>
+                                                        </div>
                                                     </td>
                                                 </tr>
                                                 {% endfor %}
@@ -627,6 +657,97 @@
         </div>
     </div>
 
+    <!-- Modal para Editar Factura y su Detalle después de ingresarla -->
+    <div class="modal fade" id="modalEditarFactura" tabindex="-1" aria-labelledby="modalEditarFacturaLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header bg-bakery text-white">
+                    <h5 class="modal-title fw-bold" id="modalEditarFacturaLabel">
+                        <i class="bi bi-pencil-square me-2"></i>Editar Detalle y Factura
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <form id="formEditarFactura" method="POST" action="">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <label class="form-label fw-bold text-bakery mb-0">Detalle del Pedido / Insumos *</label>
+                                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-secondary" onclick="limpiarCampoModalDetalle()">
+                                    <i class="bi bi-eraser me-1"></i>Limpiar símbolos/tildes
+                                </button>
+                            </div>
+                            <textarea id="edit_factura_detalle" name="detalle_pedido" class="form-control" rows="3" required></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Distribuidor / Proveedor *</label>
+                            <select id="edit_factura_distribuidor" name="distribuidor_id" class="form-select" required>
+                                {% for dist in distribuidores %}
+                                    <option value="{{ dist.id }}">{{ dist.nombre }} ({{ dist.rubro_insumo }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-sm-4">
+                                <label class="form-label fw-semibold">N° de Factura *</label>
+                                <input type="text" id="edit_factura_numero" name="numero_factura" class="form-control" required>
+                            </div>
+                            <div class="col-sm-4">
+                                <label class="form-label fw-semibold">Fecha *</label>
+                                <input type="date" id="edit_factura_fecha" name="fecha" class="form-control" required>
+                            </div>
+                            <div class="col-sm-4">
+                                <label class="form-label fw-semibold">Clasificación *</label>
+                                <select id="edit_factura_frecuencia" name="tipo_frecuencia" class="form-select" required>
+                                    <option value="Diaria">Diaria</option>
+                                    <option value="Semanal">Semanal</option>
+                                    <option value="Mensual">Mensual</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row g-2 mb-2">
+                            <div class="col-sm-6">
+                                <label class="form-label fw-semibold">Monto a Cancelar ($) *</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">$</span>
+                                    <input type="number" id="edit_factura_monto" name="monto" class="form-control" min="1" step="1" required>
+                                </div>
+                            </div>
+                            <div class="col-sm-6">
+                                <label class="form-label fw-semibold">Medio de Pago *</label>
+                                <select id="edit_factura_pago" name="medio_pago" class="form-select" required>
+                                    <option value="Efectivo">💵 Efectivo</option>
+                                    <option value="Cheque">🎫 Cheque</option>
+                                    <option value="Transferencia">🏦 Transferencia</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer bg-light">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-bakery fw-bold">
+                            <i class="bi bi-check-circle me-1"></i>Guardar Cambios
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Ver Foto de la Factura en Grande (Zoom) -->
+    <div class="modal fade" id="modalZoomFotoFactura" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header bg-dark text-white py-2">
+                    <h6 class="modal-title fw-bold mb-0"><i class="bi bi-image me-2"></i>Vista Ampliada de la Factura</h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body bg-light text-center p-2">
+                    <img id="img_zoom_factura" src="" alt="Factura ampliada" class="img-fluid rounded shadow-sm" style="max-height: 80vh; object-fit: contain;">
+                </div>
+            </div>
+        </div>
+    </div>
+
     <footer class="bg-white border-top py-3 mt-auto">
         <div class="container text-center text-muted small">
             <strong>Panadería San Michell</strong> — Sistema de Control de Proveedores, Pedidos y Facturación | Desarrollado con Python, Flask y SQLite
@@ -640,8 +761,10 @@
     <!-- Tesseract.js para lectura óptica automática (OCR) de fotos de facturas -->
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
-    <!-- Script para cambiar la clasificación manual de Factura, OCR de fotos, edición de proveedores y gráficos -->
+    <!-- Script para cambiar la clasificación manual de Factura, OCR de fotos, edición de proveedores/facturas y gráficos -->
     <script>
+        let rotacionActualFoto = 0;
+
         // Lista de distribuidores registrados para coincidencia automática por RUT o Nombre en el OCR
         const listaDistribuidoresOCR = [
             {% for dist in distribuidores %}
@@ -653,6 +776,42 @@
             },
             {% endfor %}
         ];
+
+        // Función para quitar tildes de las letras y eliminar símbolos extraños que genera el OCR
+        function limpiarTextoSinTildesNiSimbolos(texto) {
+            if (!texto) return '';
+            let limpio = texto
+                // Corregir secuencias mal codificadas comunes en OCR
+                .replace(/Ã¡/g, 'a').replace(/Ã©/g, 'e').replace(/Ã­/g, 'i').replace(/Ã³/g, 'o').replace(/Ãº/g, 'u')
+                .replace(/Ã/g, 'A').replace(/Ã‰/g, 'E').replace(/Ã/g, 'I').replace(/Ã“/g, 'O').replace(/Ãš/g, 'U')
+                .replace(/Ã±/g, 'n').replace(/Ã‘/g, 'N')
+                // Separar tildes/diacríticos de las vocales (ej: á -> a, é -> e, í -> i, ó -> o, ú -> u, ñ -> n)
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                // Quitar símbolos sueltos de tildes o ruido OCR (~, ´, `, ¨, ^, |, ¦, «, », ¬, °, º, ª, §, •, etc.)
+                .replace(/[~´`¨^|¦«»¬°ºª§¶•▪▫©®™£¥€\[\]\{\}<>_=\\*@#"'\¿\¡]/g, ' ')
+                // Dejar solo letras, números, espacios y puntuación básica limpia (.,+-/:$%())
+                .replace(/[^a-zA-Z0-9\s\.\,\-\+\/\:\$\%\(\)]/g, ' ')
+                // Evitar espacios múltiples seguidos
+                .replace(/[ \t]{2,}/g, ' ');
+            return limpio.trim();
+        }
+
+        function limpiarCampoDetalleActual() {
+            const campo = document.getElementById('input_detalle_pedido');
+            if (campo && campo.value) {
+                campo.value = limpiarTextoSinTildesNiSimbolos(campo.value);
+                resaltarCampoAutocompletado(campo);
+            }
+        }
+
+        function limpiarCampoModalDetalle() {
+            const campo = document.getElementById('edit_factura_detalle');
+            if (campo && campo.value) {
+                campo.value = limpiarTextoSinTildesNiSimbolos(campo.value);
+                resaltarCampoAutocompletado(campo);
+            }
+        }
 
         // Función para abrir el modal de edición de proveedor con sus datos actuales
         function abrirModalEditarProveedor(btn) {
@@ -674,43 +833,129 @@
             modal.show();
         }
 
-        // Preprocesamiento de imagen en Canvas para mejorar la nitidez y contraste antes de leer la factura
-        function preprocesarImagenParaOCR(file) {
+        // Función para abrir el modal de edición de factura (editar detalle luego de ingresarla)
+        function abrirModalEditarFactura(btn) {
+            const id = btn.getAttribute('data-id');
+            const distribuidor = btn.getAttribute('data-distribuidor') || '';
+            const numero = btn.getAttribute('data-numero') || '';
+            const fecha = btn.getAttribute('data-fecha') || '';
+            const frecuencia = btn.getAttribute('data-frecuencia') || 'Diaria';
+            const detalle = btn.getAttribute('data-detalle') || '';
+            const monto = btn.getAttribute('data-monto') || '';
+            const pago = btn.getAttribute('data-pago') || 'Efectivo';
+
+            const form = document.getElementById('formEditarFactura');
+            form.action = '/factura/editar/' + id;
+
+            document.getElementById('edit_factura_detalle').value = detalle;
+            document.getElementById('edit_factura_distribuidor').value = distribuidor;
+            document.getElementById('edit_factura_numero').value = numero;
+            document.getElementById('edit_factura_fecha').value = fecha;
+            document.getElementById('edit_factura_frecuencia').value = frecuencia;
+            document.getElementById('edit_factura_monto').value = monto;
+            document.getElementById('edit_factura_pago').value = pago;
+
+            const modal = new bootstrap.Modal(document.getElementById('modalEditarFactura'));
+            modal.show();
+        }
+
+        function abrirModalZoomFoto() {
+            const preview = document.getElementById('preview_foto_factura');
+            if (!preview || !preview.src) return;
+            document.getElementById('img_zoom_factura').src = preview.src;
+            const modal = new bootstrap.Modal(document.getElementById('modalZoomFotoFactura'));
+            modal.show();
+        }
+
+        function rotarYReleerFoto() {
+            const input = document.getElementById('input_foto_factura');
+            if (!input || !input.files || !input.files[0]) return;
+            rotacionActualFoto = (rotacionActualFoto + 90) % 360;
+            procesarFotoFactura(input, true);
+        }
+
+        // Preprocesamiento avanzado de imagen en Canvas: rotación, alta resolución, nivelación de iluminación y enfoque (sharpen)
+        function preprocesarImagenParaOCR(file, gradosRotacion = 0) {
             return new Promise((resolve, reject) => {
                 const img = new Image();
                 const url = URL.createObjectURL(file);
                 img.onload = function() {
-                    const maxDim = 2000;
-                    let width = img.width;
-                    let height = img.height;
-                    if (width > maxDim || height > maxDim) {
-                        if (width > height) {
-                            height = Math.round(height * (maxDim / width));
-                            width = maxDim;
-                        } else {
-                            width = Math.round(width * (maxDim / height));
-                            height = maxDim;
-                        }
+                    const maxDim = 2400;
+                    let srcW = img.width;
+                    let srcH = img.height;
+                    let scale = 1;
+                    if (srcW > maxDim || srcH > maxDim) {
+                        scale = maxDim / Math.max(srcW, srcH);
+                    } else if (Math.max(srcW, srcH) < 1200) {
+                        // Escalar hacia arriba fotos pequeñas para que el OCR lea mejor las letras chicas
+                        scale = Math.min(2, 1400 / Math.max(srcW, srcH));
                     }
-                    const canvas = document.createElement('canvas');
-                    canvas.width = width;
-                    canvas.height = height;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, width, height);
 
-                    // Convertir a escala de grises con aumento de contraste suave
+                    const drawW = Math.round(srcW * scale);
+                    const drawH = Math.round(srcH * scale);
+
+                    const rotada90 = (gradosRotacion === 90 || gradosRotacion === 270);
+                    const canvas = document.createElement('canvas');
+                    canvas.width = rotada90 ? drawH : drawW;
+                    canvas.height = rotada90 ? drawW : drawH;
+
+                    const ctx = canvas.getContext('2d');
+                    ctx.imageSmoothingEnabled = true;
+                    ctx.imageSmoothingQuality = 'high';
+
+                    ctx.save();
+                    ctx.translate(canvas.width / 2, canvas.height / 2);
+                    ctx.rotate((gradosRotacion * Math.PI) / 180);
+                    ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
+                    ctx.restore();
+
+                    // Guardamos una versión limpia a color/rotada para la vista previa del usuario
+                    const previewDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+
+                    // Ahora mejoramos el contraste y nitidez para el motor OCR
+                    const width = canvas.width;
+                    const height = canvas.height;
                     const imgData = ctx.getImageData(0, 0, width, height);
                     const data = imgData.data;
-                    const contrast = 1.35;
-                    const intercept = 128 * (1 - contrast);
-                    for (let i = 0; i < data.length; i += 4) {
-                        const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-                        const val = Math.min(255, Math.max(0, gray * contrast + intercept));
-                        data[i] = data[i + 1] = data[i + 2] = val;
+
+                    // 1. Pasar a escala de grises y calcular percentiles mínimo/máximo para normalizar sombras
+                    const grayBuf = new Uint8ClampedArray(width * height);
+                    let minG = 255, maxG = 0;
+                    for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+                        const g = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+                        grayBuf[p] = g;
+                        if (g < minG) minG = g;
+                        if (g > maxG) maxG = g;
                     }
+
+                    const rango = Math.max(1, maxG - minG);
+                    const normBuf = new Uint8ClampedArray(width * height);
+                    for (let p = 0; p < grayBuf.length; p++) {
+                        // Estiramiento de histograma + curva de contraste para blanquear el papel y oscurecer letras
+                        let norm = ((grayBuf[p] - minG) / rango) * 255;
+                        norm = ((norm - 128) * 1.45) + 135;
+                        normBuf[p] = Math.min(255, Math.max(0, Math.round(norm)));
+                    }
+
+                    // 2. Filtro de nitidez (Sharpen 3x3 suave) para definir bordes de letras y números
+                    for (let y = 1; y < height - 1; y++) {
+                        for (let x = 1; x < width - 1; x++) {
+                            const idx = y * width + x;
+                            const center = normBuf[idx] * 5;
+                            const neighbors = normBuf[idx - 1] + normBuf[idx + 1] + normBuf[idx - width] + normBuf[idx + width];
+                            const sharpened = Math.min(255, Math.max(0, center - neighbors));
+                            const val = Math.round(normBuf[idx] * 0.65 + sharpened * 0.35);
+                            const rgbaIdx = idx * 4;
+                            data[rgbaIdx] = data[rgbaIdx + 1] = data[rgbaIdx + 2] = val;
+                        }
+                    }
+
                     ctx.putImageData(imgData, 0, 0);
                     URL.revokeObjectURL(url);
-                    resolve(canvas.toDataURL('image/png'));
+                    resolve({
+                        ocrDataUrl: canvas.toDataURL('image/png'),
+                        previewDataUrl: previewDataUrl
+                    });
                 };
                 img.onerror = reject;
                 img.src = url;
@@ -720,6 +965,7 @@
         function limpiarFotoFactura() {
             const input = document.getElementById('input_foto_factura');
             input.value = '';
+            rotacionActualFoto = 0;
             document.getElementById('btn_limpiar_foto').style.display = 'none';
             document.getElementById('contenedor_ocr_estado').style.display = 'none';
             document.getElementById('ocr_resumen_resultado').style.display = 'none';
@@ -727,11 +973,12 @@
         }
 
         function usarTextoCompletoEnDetalle() {
-            const txt = document.getElementById('ocr_texto_completo').value.trim();
+            const txt = limpiarTextoSinTildesNiSimbolos(document.getElementById('ocr_texto_completo').value);
             if (txt) {
                 const campoDetalle = document.getElementById('input_detalle_pedido');
-                campoDetalle.value = txt.replace(/\n+/g, ' | ');
+                campoDetalle.value = txt.replace(/\n+/g, ' - ').replace(/\s{2,}/g, ' ').trim();
                 resaltarCampoAutocompletado(campoDetalle);
+                campoDetalle.focus();
             }
         }
 
@@ -743,9 +990,12 @@
             }, 3500);
         }
 
-        async function procesarFotoFactura(input) {
+        async function procesarFotoFactura(input, mantenerRotacion = false) {
             if (!input.files || !input.files[0]) return;
             const archivo = input.files[0];
+            if (!mantenerRotacion) {
+                rotacionActualFoto = 0;
+            }
 
             const btnLimpiar = document.getElementById('btn_limpiar_foto');
             const contenedorEstado = document.getElementById('contenedor_ocr_estado');
@@ -758,17 +1008,17 @@
             btnLimpiar.style.display = 'inline-block';
             contenedorEstado.style.display = 'block';
             resumenResultado.style.display = 'none';
-            previewImg.src = URL.createObjectURL(archivo);
 
             barraProgreso.style.width = '15%';
             barraProgreso.classList.add('progress-bar-animated');
-            msgEstado.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Preparando imagen de la factura...';
+            msgEstado.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Mejorando nitidez y preparando foto de la factura...';
 
             try {
-                const imagenProcesada = await preprocesarImagenParaOCR(archivo);
+                const imagenes = await preprocesarImagenParaOCR(archivo, rotacionActualFoto);
+                previewImg.src = imagenes.previewDataUrl;
 
                 const resultado = await Tesseract.recognize(
-                    imagenProcesada,
+                    imagenes.ocrDataUrl,
                     'spa',
                     {
                         logger: m => {
@@ -785,19 +1035,26 @@
                 barraProgreso.classList.remove('progress-bar-animated');
 
                 const textoCrudo = (resultado.data && resultado.data.text) ? resultado.data.text.trim() : '';
-                textoCompletoArea.value = textoCrudo;
+                // Limpiamos tildes y símbolos raros de inmediato
+                const textoLimpio = textoCrudo
+                    .split(/\r?\n/)
+                    .map(l => limpiarTextoSinTildesNiSimbolos(l))
+                    .filter(l => l.length > 0)
+                    .join('\n');
 
-                if (!textoCrudo) {
-                    msgEstado.innerHTML = '<i class="bi bi-exclamation-triangle-fill text-warning me-1"></i>No se logró detectar texto claro. Intenta con una foto más enfocada.';
+                textoCompletoArea.value = textoLimpio;
+
+                if (!textoLimpio) {
+                    msgEstado.innerHTML = '<i class="bi bi-exclamation-triangle-fill text-warning me-1"></i>No se logró detectar texto claro. Prueba girando la foto o con mejor luz.';
                     return;
                 }
 
-                const extraidos = extraerDatosDeFacturaChilena(textoCrudo);
-                msgEstado.innerHTML = '<i class="bi bi-check-circle-fill text-success me-1"></i>¡Lectura completada! Verifica los datos antes de guardar.';
+                const extraidos = extraerDatosDeFacturaChilena(textoLimpio);
+                msgEstado.innerHTML = '<i class="bi bi-check-circle-fill text-success me-1"></i>¡Lectura completada sin símbolos raros! Puedes editar el detalle abajo.';
 
                 resumenResultado.style.display = 'block';
                 resumenResultado.innerHTML = '<i class="bi bi-magic me-1"></i><strong>Datos rellenados automáticamente:</strong> ' +
-                    (extraidos.length > 0 ? extraidos.join(', ') : 'Se extrajo el texto en el detalle del pedido.');
+                    (extraidos.length > 0 ? extraidos.join(', ') : 'Se extrajo el texto limpio en el detalle del pedido.');
             } catch (err) {
                 console.error('Error al procesar OCR:', err);
                 barraProgreso.classList.remove('progress-bar-animated');
@@ -811,10 +1068,11 @@
 
         function extraerDatosDeFacturaChilena(texto) {
             const camposDetectados = [];
-            const textoMayus = texto.toUpperCase();
-            const lineas = texto.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 1);
+            const textoLimpio = limpiarTextoSinTildesNiSimbolos(texto);
+            const textoMayus = textoLimpio.toUpperCase();
+            const lineas = texto.split(/\r?\n/).map(l => limpiarTextoSinTildesNiSimbolos(l)).filter(l => l.length > 1);
 
-            // 1. Buscar coincidencia con Proveedor / Distribuidor registrado (por RUT o por Nombre)
+            // 1. Buscar coincidencia con Proveedor / Distribuidor registrado (por RUT o por Nombre sin tildes)
             const selectDist = document.getElementById('select_distribuidor_factura');
             const textoSinPuntos = normalizarRut(texto);
             let proveedorEncontrado = null;
@@ -825,7 +1083,7 @@
                     proveedorEncontrado = dist;
                     break;
                 }
-                const nombreNorm = dist.nombre.toUpperCase().trim();
+                const nombreNorm = limpiarTextoSinTildesNiSimbolos(dist.nombre).toUpperCase().trim();
                 if (nombreNorm.length >= 3 && textoMayus.includes(nombreNorm)) {
                     proveedorEncontrado = dist;
                     break;
@@ -844,22 +1102,22 @@
                 camposDetectados.push('Proveedor (' + proveedorEncontrado.nombre + ')');
             }
 
-            // 2. Extraer Número de Factura / Folio (ej: N° 10421, Nº12345, Folio 8832, F-10421)
+            // 2. Extraer Número de Factura / Folio (ej: N 10421, Folio 8832, F-10421)
             const inputNumFactura = document.getElementById('input_numero_factura');
-            const regexFolio = /(?:FACTURA(?:\s+ELECTR[OÓ]NICA)?[\s\S]{0,40}?(?:N[°ºoO\.]+|FOLIO)|FOLIO\s*[:#º°]?|N[°ºoO]\s*[:#]?|F\s*-\s*)\s*0*(\d{2,10})/i;
-            const matchFolio = texto.match(regexFolio);
+            const regexFolio = /(?:FACTURA(?:\s+ELECTRONICA)?[\s\S]{0,40}?(?:N[oO\.]*|FOLIO)|FOLIO\s*[:#]?|NRO\.?\s*[:#]?|F\s*-\s*)\s*0*(\d{2,10})/i;
+            const matchFolio = textoLimpio.match(regexFolio);
             if (matchFolio && matchFolio[1]) {
                 inputNumFactura.value = 'F-' + matchFolio[1];
                 resaltarCampoAutocompletado(inputNumFactura);
-                camposDetectados.push('N° Factura (F-' + matchFolio[1] + ')');
+                camposDetectados.push('N Factura (F-' + matchFolio[1] + ')');
             }
 
             // 3. Extraer Fecha de Emisión (formatos DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD o "22 de Octubre de 2026")
             const inputFecha = document.getElementById('input_fecha_factura');
             let fechaDetectada = null;
 
-            const matchISO = texto.match(/\b(20\d{2})[\/\-](0[1-9]|1[0-2])[\/\-](0[1-9]|[12]\d|3[01])\b/);
-            const matchDMY = texto.match(/\b(0?[1-9]|[12]\d|3[01])[\/\-\.](0?[1-9]|1[0-2])[\/\-\.](20\d{2}|\d{2})\b/);
+            const matchISO = textoLimpio.match(/\b(20\d{2})[\/\-](0[1-9]|1[0-2])[\/\-](0[1-9]|[12]\d|3[01])\b/);
+            const matchDMY = textoLimpio.match(/\b(0?[1-9]|[12]\d|3[01])[\/\-\.](0?[1-9]|1[0-2])[\/\-\.](20\d{2}|\d{2})\b/);
 
             const mesesMap = {
                 'ENERO': '01', 'FEBRERO': '02', 'MARZO': '03', 'ABRIL': '04',
@@ -896,11 +1154,10 @@
             const inputMonto = document.getElementById('input_monto_factura');
             let montoDetectado = null;
 
-            // Primero buscamos líneas con "TOTAL" explícito (Total a Pagar, Monto Total, Total $)
             const regexTotalExplicito = /(?:MONTO\s+TOTAL|TOTAL\s+A\s+PAGAR|VALOR\s+TOTAL|TOTAL\s+FACTURA|TOTAL)\s*[:\$]*\s*\$?\s*([\d]{1,3}(?:[\.\,]\d{3})+|\d{4,9})/gi;
             let mTotal;
             let candidatosTotal = [];
-            while ((mTotal = regexTotalExplicito.exec(texto)) !== null) {
+            while ((mTotal = regexTotalExplicito.exec(textoLimpio)) !== null) {
                 const limpio = parseInt(mTotal[1].replace(/[\.\,]/g, ''), 10);
                 if (!isNaN(limpio) && limpio >= 500 && limpio < 100000000) {
                     candidatosTotal.push(limpio);
@@ -910,11 +1167,10 @@
             if (candidatosTotal.length > 0) {
                 montoDetectado = Math.max(...candidatosTotal);
             } else {
-                // Buscar montos con formato peso chileno ($ 245.000 o 245.000) excluyendo RUTs
                 const regexPesos = /\$\s*([\d]{1,3}(?:[\.]\d{3})+|\d{4,8})\b/g;
                 let mPeso;
                 let montosPesos = [];
-                while ((mPeso = regexPesos.exec(texto)) !== null) {
+                while ((mPeso = regexPesos.exec(textoLimpio)) !== null) {
                     const val = parseInt(mPeso[1].replace(/\./g, ''), 10);
                     if (!isNaN(val) && val >= 500 && val < 50000000) {
                         montosPesos.push(val);
@@ -947,33 +1203,32 @@
                 camposDetectados.push('Medio de Pago (Efectivo)');
             }
 
-            // 6. Extraer Detalle del Pedido / Insumos (filtrando encabezados tributarios y dejando los productos)
+            // 6. Extraer Detalle del Pedido / Insumos limpio (sin tildes ni símbolos extraños)
             const inputDetalle = document.getElementById('input_detalle_pedido');
             const palabrasIgnorar = [
-                'R.U.T', 'RUT', 'FACTURA ELECTRONICA', 'FACTURA ELECTRÓNICA', 'S.I.I.', 'SII ',
-                'GIRO:', 'DIRECCION', 'DIRECCIÓN', 'COMUNA', 'CIUDAD', 'TELEFONO', 'TELÉFONO',
-                'SEÑOR(ES)', 'SENOR(ES)', 'FECHA EMISION', 'FECHA EMISIÓN', 'TIMBRE ELECTRONICO',
-                'TIMBRE ELECTRÓNICO', 'RESOLUCION', 'RESOLUCIÓN', 'VERIFIQUE DOCUMENTO', 'MONTO NETO',
+                'R.U.T', 'RUT', 'FACTURA ELECTRONICA', 'S.I.I.', 'SII ',
+                'GIRO:', 'DIRECCION', 'COMUNA', 'CIUDAD', 'TELEFONO',
+                'SENOR(ES)', 'FECHA EMISION', 'TIMBRE ELECTRONICO',
+                'RESOLUCION', 'VERIFIQUE DOCUMENTO', 'MONTO NETO',
                 'I.V.A.', 'IVA 19%', 'TOTAL A PAGAR', 'MONTO TOTAL', 'SON:', 'FORMA DE PAGO',
-                'CODIGO', 'CÓDIGO', 'DESCRIPCION', 'DESCRIPCIÓN', 'CANTIDAD', 'PRECIO UNIT'
+                'CODIGO', 'DESCRIPCION', 'CANTIDAD', 'PRECIO UNIT'
             ];
 
             const lineasProductos = lineas.filter(linea => {
                 const up = linea.toUpperCase();
                 if (up.length < 4) return false;
                 if (palabrasIgnorar.some(p => up.includes(p))) return false;
-                // Ignorar líneas que son solo números o signos
                 if (/^[\d\.\,\-\$\s\/]+$/.test(up)) return false;
                 return true;
             });
 
             if (lineasProductos.length > 0) {
-                const resumenDetalle = lineasProductos.slice(0, 8).join(' | ');
+                const resumenDetalle = limpiarTextoSinTildesNiSimbolos(lineasProductos.slice(0, 8).join(', '));
                 inputDetalle.value = resumenDetalle;
                 resaltarCampoAutocompletado(inputDetalle);
                 camposDetectados.push('Detalle del Pedido');
-            } else if (texto.trim().length > 0) {
-                inputDetalle.value = lineas.slice(0, 5).join(' | ');
+            } else if (lineas.length > 0) {
+                inputDetalle.value = limpiarTextoSinTildesNiSimbolos(lineas.slice(0, 5).join(', '));
                 resaltarCampoAutocompletado(inputDetalle);
                 camposDetectados.push('Detalle del Pedido');
             }
