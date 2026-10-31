@@ -6,10 +6,8 @@ Tecnologías: Python + Flask + SQLite3
 """
 
 import json
-import os
+import re
 import sqlite3
-import time
-import urllib.request
 from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 
@@ -18,12 +16,6 @@ app = Flask(__name__)
 app.secret_key = "san_michell_clave_secreta_universidad"
 
 DB_NAME = "san_michell.db"
-LOCAL_BACKUP_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "san_michell_respaldo.json")
-CLOUD_BACKUP_URL = os.environ.get(
-    "SAN_MICHELL_CLOUD_URL",
-    "https://textdb.dev/api/data/panaderia-san-michell-db-v1-debora"
-)
-_ULTIMA_CONSULTA_NUBE = 0.0
 
 
 @app.after_request
@@ -137,98 +129,97 @@ def aplicar_respaldo_en_db(conn, payload):
     return True
 
 
-def cargar_respaldo_nube():
+def normalizar_codigo_factura(codigo):
     """
-    Descarga el respaldo persistente desde la nube para que los proveedores y facturas
-    se mantengan guardados aunque Render reinicie o formatee el contenedor gratuito,
-    y para que se sincronicen automáticamente entre distintos computadores o celulares.
+    Normaliza un número de factura para evitar duplicados aunque se escriba con/sin 'F-',
+    mayúsculas/minúsculas o espacios adicionales (ej: 'F-10421' y '10421').
     """
-    try:
-        req = urllib.request.Request(
-            CLOUD_BACKUP_URL,
-            headers={"User-Agent": "Mozilla/5.0"}
-        )
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            raw = resp.read().decode("utf-8").strip()
-            if raw:
-                data = json.loads(raw)
-                if isinstance(data, dict) and "version_datos" in data:
-                    return data
-    except Exception as e:
-        print(f"Aviso: No se pudo leer respaldo en la nube: {e}")
-
-    try:
-        if os.path.exists(LOCAL_BACKUP_FILE):
-            with open(LOCAL_BACKUP_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if isinstance(data, dict) and "version_datos" in data:
-                    return data
-    except Exception:
-        pass
-    return None
+    limpio = (codigo or "").strip().upper()
+    if not limpio:
+        return ""
+    sin_prefijo = re.sub(r"^F[\-\s]*", "", limpio).strip()
+    return sin_prefijo if sin_prefijo else limpio
 
 
-def guardar_respaldo_nube(conn):
+def extraer_numeros_factura_individuales(texto_o_lista):
     """
-    Guarda inmediatamente el estado actual de proveedores y facturas en la nube
-    cada vez que se ingresa, modifica o elimina un registro.
+    Recibe un texto (posiblemente separado por comas/barras) o una lista de strings
+    y retorna la lista de números de factura limpios manteniendo su formato original.
     """
-    global _ULTIMA_CONSULTA_NUBE
-    estado = exportar_estado_completo(conn)
-    raw_json = json.dumps(estado, ensure_ascii=True)
-
-    try:
-        with open(LOCAL_BACKUP_FILE, "w", encoding="utf-8") as f:
-            f.write(raw_json)
-    except Exception:
-        pass
-
-    try:
-        req = urllib.request.Request(
-            CLOUD_BACKUP_URL,
-            data=raw_json.encode("ascii"),
-            headers={
-                "Content-Type": "text/plain",
-                "User-Agent": "Mozilla/5.0"
-            },
-            method="POST"
-        )
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            resp.read()
-        _ULTIMA_CONSULTA_NUBE = time.time()
-        return True
-    except Exception as e:
-        print(f"Aviso: No se pudo guardar respaldo en la nube: {e}")
-        return False
+    if isinstance(texto_o_lista, str):
+        partes_crudas = re.split(r"[,;/]+", texto_o_lista)
+    else:
+        partes_crudas = []
+        for item in texto_o_lista:
+            partes_crudas.extend(re.split(r"[,;/]+", str(item or "")))
+    return [p.strip() for p in partes_crudas if p and p.strip()]
 
 
-def sincronizar_desde_nube_si_necesario(conn, forzar=False):
+def validar_facturas_no_duplicadas(conn, lista_numeros, excluir_factura_id=None):
     """
-    Verifica si existe una versión más reciente de los proveedores y facturas en la nube
-    y la restaura en la base de datos SQLite local antes de mostrar o modificar datos.
+    Verifica:
+    1) Que en la misma carga no se repita dos veces el mismo número de factura.
+    2) Que ninguno de los números de factura exista ya en la base de datos.
+    Retorna (es_valido, mensaje_error).
     """
-    global _ULTIMA_CONSULTA_NUBE
-    ahora = time.time()
-    version_local = obtener_version_datos(conn)
-    if not forzar and version_local > 0 and (ahora - _ULTIMA_CONSULTA_NUBE) < 3.0:
-        return False
+    vistos_en_lote = {}
+    for num in lista_numeros:
+        norm = normalizar_codigo_factura(num)
+        if not norm:
+            continue
+        if norm in vistos_en_lote:
+            return False, f"No se permite ingresar dos veces el mismo número de factura en el registro ('{num}')."
+        vistos_en_lote[norm] = num
 
-    _ULTIMA_CONSULTA_NUBE = ahora
-    respaldo_nube = cargar_respaldo_nube()
-    if respaldo_nube:
-        return aplicar_respaldo_en_db(conn, respaldo_nube)
-    return False
+    if excluir_factura_id is not None:
+        filas = conn.execute(
+            """
+            SELECT f.numero_factura, f.fecha, d.nombre AS distribuidor_nombre
+            FROM facturas f
+            LEFT JOIN distribuidores d ON f.distribuidor_id = d.id
+            WHERE f.id != ?
+            """,
+            (excluir_factura_id,)
+        ).fetchall()
+    else:
+        filas = conn.execute(
+            """
+            SELECT f.numero_factura, f.fecha, d.nombre AS distribuidor_nombre
+            FROM facturas f
+            LEFT JOIN distribuidores d ON f.distribuidor_id = d.id
+            """
+        ).fetchall()
+
+    existentes = {}
+    for fila in filas:
+        for num_existente in extraer_numeros_factura_individuales(fila["numero_factura"]):
+            norm_ex = normalizar_codigo_factura(num_existente)
+            if norm_ex:
+                existentes[norm_ex] = {
+                    "original": num_existente,
+                    "fecha": fila["fecha"],
+                    "distribuidor": fila["distribuidor_nombre"] or "Proveedor registrado"
+                }
+
+    for num in lista_numeros:
+        norm = normalizar_codigo_factura(num)
+        if norm in existentes:
+            info = existentes[norm]
+            return (
+                False,
+                f"El número de factura '{num}' ya fue ingresado anteriormente ({info['distribuidor']} el {info['fecha']}). No se permite registrar dos veces el mismo número de factura."
+            )
+
+    return True, ""
 
 
 def restaurar_desde_formulario_si_necesario(conn):
-    sincronizar_desde_nube_si_necesario(conn, forzar=True)
     respaldo_raw = request.form.get("respaldo_cliente", "").strip()
     if not respaldo_raw:
         return
     try:
         payload = json.loads(respaldo_raw)
-        if aplicar_respaldo_en_db(conn, payload):
-            guardar_respaldo_nube(conn)
+        aplicar_respaldo_en_db(conn, payload)
     except Exception:
         pass
 
@@ -278,12 +269,8 @@ def init_db():
             FOREIGN KEY (distribuidor_id) REFERENCES distribuidores (id) ON DELETE CASCADE
         )
     """)
-    conn.commit()
 
-    # Primero intentamos restaurar desde el respaldo en la nube para no reiniciar a los datos de fábrica
-    sincronizar_desde_nube_si_necesario(conn, forzar=True)
-
-    # Insertar semilla solo una vez si no existe ningún respaldo previo en la nube ni en la base local
+    # Insertar semilla solo una vez cuando se crea la base de datos por primera vez
     semilla = cursor.execute("SELECT valor FROM meta_estado WHERE clave = 'semilla_cargada'").fetchone()
     if not semilla:
         cursor.execute("SELECT COUNT(*) as total FROM distribuidores")
@@ -312,7 +299,7 @@ def init_db():
             """, facturas_iniciales)
 
         cursor.execute("INSERT OR REPLACE INTO meta_estado (clave, valor) VALUES ('semilla_cargada', '1')")
-        cursor.execute("INSERT OR IGNORE INTO meta_estado (clave, valor) VALUES ('version_datos', '1')")
+        cursor.execute("INSERT OR IGNORE INTO meta_estado (clave, valor) VALUES ('version_datos', '0')")
 
     conn.commit()
     conn.close()
@@ -326,7 +313,6 @@ def index():
     las tablas de facturas y el comparador de fin de mes por distribuidor.
     """
     conn = get_db_connection()
-    sincronizar_desde_nube_si_necesario(conn)
 
     # Mes seleccionado en el filtro para el cierre/comparación de fin de mes (por defecto el mes actual YYYY-MM)
     mes_actual = datetime.now().strftime("%Y-%m")
@@ -387,6 +373,7 @@ def index():
             COALESCE(SUM(CASE WHEN f.medio_pago = 'Efectivo' THEN f.monto ELSE 0 END), 0) AS pago_efectivo,
             COALESCE(SUM(CASE WHEN f.medio_pago = 'Cheque' THEN f.monto ELSE 0 END), 0) AS pago_cheque,
             COALESCE(SUM(CASE WHEN f.medio_pago = 'Transferencia' THEN f.monto ELSE 0 END), 0) AS pago_transferencia,
+            GROUP_CONCAT(f.numero_factura, ', ') AS lista_numeros_facturas,
             GROUP_CONCAT(f.numero_factura || ' (' || f.detalle_pedido || ')', ' | ') AS resumen_pedidos
         FROM distribuidores d
         LEFT JOIN facturas f ON d.id = f.distribuidor_id AND strftime('%Y-%m', f.fecha) = ?
@@ -418,15 +405,12 @@ def index():
 @app.route("/api/sincronizar", methods=["POST"])
 def api_sincronizar():
     """
-    Sincroniza automáticamente el respaldo del navegador y la nube con el servidor si el contenedor gratuito
+    Sincroniza automáticamente el respaldo del navegador con el servidor si el contenedor gratuito
     de Render se reinició tras un período de inactividad o despliegue.
     """
     payload = request.get_json(silent=True) or {}
     conn = get_db_connection()
-    sincronizar_desde_nube_si_necesario(conn, forzar=True)
     restaurado = aplicar_respaldo_en_db(conn, payload)
-    if restaurado:
-        guardar_respaldo_nube(conn)
     estado = exportar_estado_completo(conn)
     conn.close()
     return jsonify({"ok": True, "restaurado": restaurado, "estado": estado})
@@ -455,7 +439,6 @@ def nuevo_distribuidor():
     """, (nombre, rut_empresa, telefono, rubro_insumo, fecha_registro))
     actualizar_version_datos(conn)
     conn.commit()
-    guardar_respaldo_nube(conn)
     conn.close()
 
     flash(f"Distribuidor '{nombre}' agregado correctamente a Panadería San Michell.", "success")
@@ -465,58 +448,107 @@ def nuevo_distribuidor():
 @app.route("/factura/nueva", methods=["POST"])
 def nueva_factura():
     """
-    Recibe los datos de una factura (Diaria, Semanal o Mensual), junto con el número de factura,
-    detalle del pedido, monto a cancelar y medio de pago (Efectivo, Cheque o Transferencia).
+    Recibe los datos de una o varias facturas del mismo proveedor (Diaria, Semanal o Mensual),
+    junto con el/los número(s) de factura, detalle del pedido, monto total sumado a cancelar
+    y medio de pago (Efectivo, Cheque o Transferencia). Valida que ningún número de factura esté duplicado.
     """
     distribuidor_id = request.form.get("distribuidor_id")
-    numero_factura = request.form.get("numero_factura", "").strip()
+    numeros_lista_form = request.form.getlist("numeros_factura[]")
+    montos_indiv_form = request.form.getlist("montos_individuales[]")
+    numero_factura_unico = request.form.get("numero_factura", "").strip()
+
+    if numeros_lista_form:
+        lista_numeros = extraer_numeros_factura_individuales(numeros_lista_form)
+    else:
+        lista_numeros = extraer_numeros_factura_individuales(numero_factura_unico)
+
+    numero_factura_final = ", ".join(lista_numeros)
     fecha = request.form.get("fecha", "").strip()
     tipo_frecuencia = request.form.get("tipo_frecuencia", "").strip()
     detalle_pedido = request.form.get("detalle_pedido", "").strip()
     monto = request.form.get("monto", "0").strip()
     medio_pago = request.form.get("medio_pago", "").strip()
 
-    if not (distribuidor_id and numero_factura and fecha and tipo_frecuencia and detalle_pedido and monto and medio_pago):
+    # Si ingresaron montos individuales por cada factura y el monto total está vacío o en 0, sumarlos automáticamente
+    suma_individuales = 0
+    desglose_montos = []
+    if numeros_lista_form and montos_indiv_form:
+        for idx, num_raw in enumerate(numeros_lista_form):
+            num_clean = (num_raw or "").strip()
+            if not num_clean:
+                continue
+            m_raw = (montos_indiv_form[idx] if idx < len(montos_indiv_form) else "").strip()
+            if m_raw:
+                try:
+                    m_val = int(float(m_raw))
+                    if m_val > 0:
+                        suma_individuales += m_val
+                        desglose_montos.append(f"{num_clean}: ${m_val:,}".replace(",", "."))
+                except ValueError:
+                    pass
+
+    if (not monto or monto == "0") and suma_individuales > 0:
+        monto = str(suma_individuales)
+
+    if not (distribuidor_id and numero_factura_final and fecha and tipo_frecuencia and detalle_pedido and monto and medio_pago):
         flash("Todos los campos de la factura y pedido son obligatorios.", "danger")
         return redirect(url_for("index"))
 
     try:
         monto_entero = int(float(monto))
+        if monto_entero <= 0:
+            raise ValueError()
     except ValueError:
-        flash("El monto a cancelar debe ser un valor numérico válido.", "danger")
+        flash("El monto total a cancelar debe ser un valor numérico mayor a 0.", "danger")
         return redirect(url_for("index"))
 
     conn = get_db_connection()
     restaurar_desde_formulario_si_necesario(conn)
+
+    es_valido, msg_error = validar_facturas_no_duplicadas(conn, lista_numeros)
+    if not es_valido:
+        conn.close()
+        mes_redir = fecha[:7] if len(fecha) >= 7 else datetime.now().strftime("%Y-%m")
+        flash(msg_error, "danger")
+        return redirect(url_for("index", mes=mes_redir))
+
+    if len(lista_numeros) > 1 and desglose_montos and "Desglose:" not in detalle_pedido:
+        detalle_pedido = f"{detalle_pedido} (Desglose: {' + '.join(desglose_montos)})"
+
     conn.execute("""
         INSERT INTO facturas (distribuidor_id, numero_factura, fecha, tipo_frecuencia, detalle_pedido, monto, medio_pago)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (int(distribuidor_id), numero_factura, fecha, tipo_frecuencia, detalle_pedido, monto_entero, medio_pago))
+    """, (int(distribuidor_id), numero_factura_final, fecha, tipo_frecuencia, detalle_pedido, monto_entero, medio_pago))
     actualizar_version_datos(conn)
     conn.commit()
-    guardar_respaldo_nube(conn)
     conn.close()
 
     # Redirigir manteniendo el mes de la factura recién ingresada para que el usuario la vea de inmediato
     mes_factura = fecha[:7]
-    flash(f"Factura N° {numero_factura} ({tipo_frecuencia}) registrada exitosamente por ${monto_entero:,}.", "success")
+    if len(lista_numeros) > 1:
+        flash(f"Se registraron {len(lista_numeros)} facturas ({numero_factura_final}) del mismo proveedor por un monto total sumado de ${monto_entero:,}.".replace(",", "."), "success")
+    else:
+        flash(f"Factura N° {numero_factura_final} ({tipo_frecuencia}) registrada exitosamente por ${monto_entero:,}.".replace(",", "."), "success")
     return redirect(url_for("index", mes=mes_factura))
 
 
 @app.route("/factura/editar/<int:factura_id>", methods=["POST"])
 def editar_factura(factura_id):
     """
-    Permite modificar el detalle del pedido y los datos de una factura ya ingresada.
+    Permite modificar el detalle del pedido y los datos de una factura ya ingresada,
+    validando que el número de factura no se duplique con otra existente.
     """
     distribuidor_id = request.form.get("distribuidor_id")
     numero_factura = request.form.get("numero_factura", "").strip()
+    lista_numeros = extraer_numeros_factura_individuales(numero_factura)
+    numero_factura_final = ", ".join(lista_numeros)
     fecha = request.form.get("fecha", "").strip()
     tipo_frecuencia = request.form.get("tipo_frecuencia", "").strip()
     detalle_pedido = request.form.get("detalle_pedido", "").strip()
     monto = request.form.get("monto", "0").strip()
     medio_pago = request.form.get("medio_pago", "").strip()
 
-    if not (distribuidor_id and numero_factura and fecha and tipo_frecuencia and detalle_pedido and monto and medio_pago):
+    if not (distribuidor_id and numero_factura_final and fecha and tipo_frecuencia and detalle_pedido and monto and medio_pago):
         flash("Todos los campos de la factura y el detalle del pedido son obligatorios.", "danger")
         return redirect(url_for("index"))
 
@@ -528,18 +560,25 @@ def editar_factura(factura_id):
 
     conn = get_db_connection()
     restaurar_desde_formulario_si_necesario(conn)
+
+    es_valido, msg_error = validar_facturas_no_duplicadas(conn, lista_numeros, excluir_factura_id=factura_id)
+    if not es_valido:
+        conn.close()
+        mes_redir = fecha[:7] if len(fecha) >= 7 else datetime.now().strftime("%Y-%m")
+        flash(msg_error, "danger")
+        return redirect(url_for("index", mes=mes_redir))
+
     conn.execute("""
         UPDATE facturas
         SET distribuidor_id = ?, numero_factura = ?, fecha = ?, tipo_frecuencia = ?, detalle_pedido = ?, monto = ?, medio_pago = ?
         WHERE id = ?
-    """, (int(distribuidor_id), numero_factura, fecha, tipo_frecuencia, detalle_pedido, monto_entero, medio_pago, factura_id))
+    """, (int(distribuidor_id), numero_factura_final, fecha, tipo_frecuencia, detalle_pedido, monto_entero, medio_pago, factura_id))
     actualizar_version_datos(conn)
     conn.commit()
-    guardar_respaldo_nube(conn)
     conn.close()
 
     mes_factura = fecha[:7]
-    flash(f"Factura N° {numero_factura} actualizada correctamente.", "success")
+    flash(f"Factura N° {numero_factura_final} actualizada correctamente.", "success")
     return redirect(url_for("index", mes=mes_factura))
 
 
@@ -553,7 +592,6 @@ def eliminar_factura(factura_id):
     conn.execute("DELETE FROM facturas WHERE id = ?", (factura_id,))
     actualizar_version_datos(conn)
     conn.commit()
-    guardar_respaldo_nube(conn)
     conn.close()
 
     flash("Factura eliminada correctamente.", "warning")
@@ -583,7 +621,6 @@ def editar_distribuidor(distribuidor_id):
     """, (nombre, rut_empresa, telefono, rubro_insumo, distribuidor_id))
     actualizar_version_datos(conn)
     conn.commit()
-    guardar_respaldo_nube(conn)
     conn.close()
 
     flash(f"Proveedor '{nombre}' modificado correctamente.", "success")
@@ -601,7 +638,6 @@ def eliminar_distribuidor(distribuidor_id):
     conn.execute("DELETE FROM distribuidores WHERE id = ?", (distribuidor_id,))
     actualizar_version_datos(conn)
     conn.commit()
-    guardar_respaldo_nube(conn)
     conn.close()
 
     flash("Distribuidor eliminado del registro.", "warning")
