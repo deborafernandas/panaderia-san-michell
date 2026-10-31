@@ -14,7 +14,7 @@
 <body>
 
     <!-- Barra de Navegación Superior -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-bakery shadow-sm sticky-top">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-bakery shadow-sm sticky-top no-print">
         <div class="container">
             <a class="navbar-brand d-flex align-items-center gap-2 fw-bold" href="{{ url_for('index') }}">
                 <i class="bi bi-shop-window fs-3 text-warning"></i>
@@ -24,25 +24,31 @@
                 </div>
             </a>
 
-            <!-- Selector de Mes para Comparación Mensual -->
-            <form method="GET" action="{{ url_for('index') }}" class="d-flex align-items-center gap-2 bg-white bg-opacity-10 p-2 rounded-3">
-                <label for="mes" class="text-white small fw-semibold mb-0 text-nowrap">
-                    <i class="bi bi-calendar3 me-1"></i>Período a evaluar:
-                </label>
-                <input type="month" id="mes" name="mes" class="form-control form-control-sm" value="{{ mes_filtro }}" onchange="this.form.submit()">
-                <select name="distribuidor_id" class="form-select form-select-sm" onchange="this.form.submit()">
-                    <option value="todos" {% if distribuidor_filtro == 'todos' %}selected{% endif %}>Todos los distribuidores</option>
-                    {% for dist in distribuidores %}
-                        <option value="{{ dist.id }}" {% if distribuidor_filtro == dist.id|string %}selected{% endif %}>{{ dist.nombre }}</option>
-                    {% endfor %}
-                </select>
-            </form>
+            <!-- Selector de Mes para Comparación Mensual y Botón de Resumen PDF -->
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <form method="GET" action="{{ url_for('index') }}" class="d-flex align-items-center gap-2 bg-white bg-opacity-10 p-2 rounded-3">
+                    <label for="mes" class="text-white small fw-semibold mb-0 text-nowrap">
+                        <i class="bi bi-calendar3 me-1"></i>Período a evaluar:
+                    </label>
+                    <input type="month" id="mes" name="mes" class="form-control form-control-sm" value="{{ mes_filtro }}" onchange="this.form.submit()">
+                    <select name="distribuidor_id" class="form-select form-select-sm" onchange="this.form.submit()">
+                        <option value="todos" {% if distribuidor_filtro == 'todos' %}selected{% endif %}>Todos los distribuidores</option>
+                        {% for dist in distribuidores %}
+                            <option value="{{ dist.id }}" {% if distribuidor_filtro == dist.id|string %}selected{% endif %}>{{ dist.nombre }}</option>
+                        {% endfor %}
+                    </select>
+                </form>
+                <a href="#apartadoResumenMensualPDF" class="btn btn-warning btn-sm fw-bold text-dark py-2 px-3 shadow-sm">
+                    <i class="bi bi-file-earmark-pdf-fill me-1 text-danger"></i>Resumen del Mes (Imprimir / PDF)
+                </a>
+            </div>
         </div>
     </nav>
 
     <main class="container py-4">
 
         <!-- Mensajes de Retroalimentación (Flash Messages) -->
+        <div class="no-print">
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
@@ -53,9 +59,10 @@
                 {% endfor %}
             {% endif %}
         {% endwith %}
+        </div>
 
         <!-- Tarjetas de Resumen y Comparación Rápida del Mes -->
-        <div class="row g-3 mb-4">
+        <div class="row g-3 mb-4 no-print">
             <div class="col-md-3">
                 <div class="card card-metric border-0 shadow-sm h-100 bg-gradient-total text-white">
                     <div class="card-body">
@@ -107,7 +114,7 @@
         </div>
 
         <!-- Desglose por Medio de Pago (Efectivo, Cheque, Transferencia) -->
-        <div class="card border-0 shadow-sm mb-4">
+        <div class="card border-0 shadow-sm mb-4 no-print">
             <div class="card-body py-3">
                 <div class="row align-items-center text-center g-2">
                     <div class="col-md-3 text-md-start">
@@ -133,7 +140,7 @@
         </div>
 
         <!-- SECCIÓN PRINCIPAL: Formularios de Ingreso (Izquierda) y Pestañas de Facturas (Derecha) -->
-        <div class="row g-4 mb-5">
+        <div class="row g-4 mb-5 no-print">
 
             <!-- Columna Izquierda: Ingreso de Facturas (Pestañas Diaria / Semanal / Mensual) y Nuevo Distribuidor -->
             <div class="col-lg-5">
@@ -164,9 +171,10 @@
                             </li>
                         </ul>
 
-                        <form action="{{ url_for('nueva_factura') }}" method="POST">
+                        <form id="formNuevaFactura" action="{{ url_for('nueva_factura') }}" method="POST" onsubmit="return validarFormularioNuevaFactura(event)">
                             <!-- Campo oculto sincronizado con la pestaña activa -->
                             <input type="hidden" id="input_tipo_frecuencia" name="tipo_frecuencia" value="Diaria">
+                            <input type="hidden" id="input_numero_factura_hidden" name="numero_factura" value="">
 
                             <div class="alert alert-secondary py-2 small mb-3 d-flex align-items-center justify-content-between">
                                 <span>Clasificación actual del registro:</span>
@@ -237,15 +245,40 @@
                                 </select>
                             </div>
 
-                            <div class="row g-2 mb-3">
-                                <div class="col-sm-6">
-                                    <label class="form-label fw-semibold">N° de Factura *</label>
-                                    <input type="text" id="input_numero_factura" name="numero_factura" class="form-control" placeholder="Ej: F-10520" required>
+                            <!-- Apartado para ingresar una o varias facturas del mismo proveedor al momento -->
+                            <div class="mb-3 p-3 rounded-3 border bg-light">
+                                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                                    <label class="form-label fw-bold mb-0 text-dark">
+                                        <i class="bi bi-receipt me-1 text-bakery"></i>N° de Factura(s) del Proveedor *
+                                    </label>
+                                    <button type="button" class="btn btn-sm btn-outline-primary fw-semibold py-1 px-2" onclick="agregarFilaFacturaAdicional()">
+                                        <i class="bi bi-plus-circle-fill me-1"></i>Agregar otra factura del mismo proveedor
+                                    </button>
                                 </div>
-                                <div class="col-sm-6">
-                                    <label class="form-label fw-semibold">Fecha de Emisión *</label>
-                                    <input type="date" id="input_fecha_factura" name="fecha" class="form-control" value="{{ fecha_hoy }}" required>
+                                <small class="text-muted d-block mb-2" style="font-size: 0.76rem;">
+                                    Puedes ingresar una sola factura o agregar varias facturas del mismo proveedor a la vez. Si escribes el monto individual de cada una se sumarán solas, o puedes escribir el <strong>monto total sumado</strong> directamente abajo.
+                                </small>
+
+                                <div id="lista_facturas_proveedor" class="d-flex flex-column gap-2">
+                                    <div class="row g-2 align-items-center fila-factura-item">
+                                        <div class="col-7">
+                                            <input type="text" id="input_numero_factura" name="numeros_factura[]" class="form-control form-control-sm input-num-factura-lote" placeholder="N° Factura (Ej: F-10520)" required oninput="validarYActualizarFacturasFormulario()">
+                                        </div>
+                                        <div class="col-5">
+                                            <div class="input-group input-group-sm">
+                                                <span class="input-group-text">$</span>
+                                                <input type="number" name="montos_individuales[]" class="form-control input-monto-indiv-lote" min="0" step="1" placeholder="Monto (opcional)" oninput="recalcularMontoTotalFacturas()">
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
+
+                                <div id="alerta_factura_duplicada" class="alert alert-danger py-2 px-3 small mt-2 mb-0" style="display: none;"></div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Fecha de Emisión / Registro *</label>
+                                <input type="date" id="input_fecha_factura" name="fecha" class="form-control" value="{{ fecha_hoy }}" required>
                             </div>
 
                             <div class="mb-3">
@@ -261,11 +294,12 @@
 
                             <div class="row g-2 mb-3">
                                 <div class="col-sm-6">
-                                    <label class="form-label fw-semibold">Monto a Cancelar ($) *</label>
+                                    <label id="label_monto_total_factura" class="form-label fw-semibold">Monto Total a Cancelar ($) *</label>
                                     <div class="input-group">
-                                        <span class="input-group-text">$</span>
-                                        <input type="number" id="input_monto_factura" name="monto" class="form-control" min="1" step="1" placeholder="Ej: 245000" required>
+                                        <span class="input-group-text fw-bold">$</span>
+                                        <input type="number" id="input_monto_factura" name="monto" class="form-control fw-bold" min="1" step="1" placeholder="Ej: 245000" required>
                                     </div>
+                                    <small id="ayuda_suma_automatica" class="text-success fw-semibold d-block mt-1" style="font-size: 0.74rem; display: none !important;"></small>
                                 </div>
                                 <div class="col-sm-6">
                                     <label class="form-label fw-semibold">Medio de Pago *</label>
@@ -277,8 +311,8 @@
                                 </div>
                             </div>
 
-                            <button type="submit" class="btn btn-bakery w-100 fw-bold py-2">
-                                <i class="bi bi-plus-circle me-1"></i>Guardar Factura y Pedido
+                            <button type="submit" id="btn_guardar_factura" class="btn btn-bakery w-100 fw-bold py-2">
+                                <i class="bi bi-plus-circle me-1"></i>Guardar Factura(s) y Pedido
                             </button>
                         </form>
                     </div>
@@ -507,15 +541,20 @@
         </div>
 
         <!-- SECCIÓN DE CIERRE DE MES: Comparativa de Gastos y Pedidos por Distribuidor -->
-        <div class="card border-0 shadow-sm mb-4">
-            <div class="card-header bg-bakery text-white py-3 d-flex flex-wrap justify-content-between align-items-center">
+        <div class="card border-0 shadow-sm mb-4 no-print">
+            <div class="card-header bg-bakery text-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
                 <div>
                     <h5 class="mb-0 fw-bold"><i class="bi bi-bar-chart-line-fill me-2 text-warning"></i>Balance y Comparativa de Fin de Mes por Distribuidor ({{ mes_filtro }})</h5>
                     <small class="text-white-50">Compara visualmente y en tabla cuánto se ha pedido y gastado en cada distribuidor durante el mes</small>
                 </div>
-                <span class="badge bg-warning text-dark fs-6 mt-2 mt-md-0">
-                    Total Mes: {{ total_general_mes | moneda }}
-                </span>
+                <div class="d-flex align-items-center gap-2">
+                    <a href="#apartadoResumenMensualPDF" class="btn btn-light btn-sm fw-bold">
+                        <i class="bi bi-file-earmark-pdf-fill text-danger me-1"></i>Ir al Resumen para Imprimir / PDF
+                    </a>
+                    <span class="badge bg-warning text-dark fs-6">
+                        Total Mes: {{ total_general_mes | moneda }}
+                    </span>
+                </div>
             </div>
 
             <!-- APARTADO DE GRÁFICOS INTERACTIVOS (Chart.js) -->
@@ -613,10 +652,207 @@
             </div>
         </div>
 
+        <!-- NUEVO APARTADO: RESUMEN DEL MES PARA IMPRIMIR O GUARDAR EN PDF (Con Facturas y Montos) -->
+        <div class="card border-0 shadow-sm mb-5 print-report-card" id="apartadoResumenMensualPDF">
+            <div class="card-header bg-dark text-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2 no-print">
+                <div>
+                    <h5 class="mb-0 fw-bold">
+                        <i class="bi bi-file-earmark-pdf-fill me-2 text-warning"></i>Resumen del Mes para Imprimir o Guardar en PDF ({{ mes_filtro }})
+                    </h5>
+                    <small class="text-white-50">
+                        Informe completo con todas las facturas ingresadas en el mes, resumen por proveedor y montos totales listo para imprimir o exportar a PDF.
+                    </small>
+                </div>
+                <div class="d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-warning fw-bold shadow-sm" onclick="imprimirResumenMensual()">
+                        <i class="bi bi-printer-fill me-1"></i>Imprimir / Guardar Resumen en PDF
+                    </button>
+                </div>
+            </div>
+
+            <div class="card-body p-4" id="hojaImpresionResumenMes">
+                <!-- Encabezado formal del Informe Mensual (visible en pantalla y al imprimir/PDF) -->
+                <div class="border-bottom border-2 border-dark pb-3 mb-4">
+                    <div class="row align-items-center g-3">
+                        <div class="col-md-7">
+                            <h3 class="fw-bold mb-1 text-uppercase" style="letter-spacing: 0.5px;">
+                                Panadería San Michell — Resumen Mensual de Facturas y Montos
+                            </h3>
+                            <p class="text-muted mb-0 small">
+                                Control de Proveedores, Facturas y Pagos del Mes | Fecha de emisión: <strong>{{ fecha_hoy }}</strong>
+                            </p>
+                        </div>
+                        <div class="col-md-5 text-md-end">
+                            <div class="d-inline-block border border-dark rounded-2 px-3 py-2 bg-light text-start">
+                                <div class="small text-uppercase text-muted fw-bold">Período Consultado: <span class="text-dark">{{ mes_filtro }}</span></div>
+                                <div class="small text-muted">Registros de Facturas en el Mes: <strong class="text-dark">{{ facturas | length }}</strong></div>
+                                <div class="fs-5 fw-bold text-dark mt-1">Total del Mes: {{ total_general_mes | moneda }}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bloques de Resumen General del Mes (Clasificación y Medios de Pago) -->
+                <div class="row g-3 mb-4">
+                    <div class="col-md-6">
+                        <div class="border rounded-2 p-3 h-100 bg-light bg-opacity-50">
+                            <h6 class="fw-bold text-uppercase small border-bottom pb-2 mb-2">
+                                <i class="bi bi-calendar2-week me-1"></i>Desglose por Clasificación de Facturas
+                            </h6>
+                            <div class="d-flex justify-content-between small py-1 border-bottom">
+                                <span>Facturas Diarias:</span>
+                                <strong>{{ totales_frecuencia['Diaria'] | moneda }}</strong>
+                            </div>
+                            <div class="d-flex justify-content-between small py-1 border-bottom">
+                                <span>Facturas Semanales:</span>
+                                <strong>{{ totales_frecuencia['Semanal'] | moneda }}</strong>
+                            </div>
+                            <div class="d-flex justify-content-between small py-1">
+                                <span>Facturas Mensuales:</span>
+                                <strong>{{ totales_frecuencia['Mensual'] | moneda }}</strong>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="border rounded-2 p-3 h-100 bg-light bg-opacity-50">
+                            <h6 class="fw-bold text-uppercase small border-bottom pb-2 mb-2">
+                                <i class="bi bi-wallet2 me-1"></i>Desglose por Medio de Pago
+                            </h6>
+                            <div class="d-flex justify-content-between small py-1 border-bottom">
+                                <span>Pago en Efectivo:</span>
+                                <strong>{{ totales_pago['Efectivo'] | moneda }}</strong>
+                            </div>
+                            <div class="d-flex justify-content-between small py-1 border-bottom">
+                                <span>Pago con Cheque:</span>
+                                <strong>{{ totales_pago['Cheque'] | moneda }}</strong>
+                            </div>
+                            <div class="d-flex justify-content-between small py-1">
+                                <span>Pago por Transferencia:</span>
+                                <strong>{{ totales_pago['Transferencia'] | moneda }}</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 1. Tabla Resumen por Proveedor con Números de Factura y Monto Total -->
+                <h6 class="fw-bold text-uppercase mb-2">
+                    <i class="bi bi-building-check me-1"></i>1. Resumen de Facturas y Montos por Proveedor ({{ mes_filtro }})
+                </h6>
+                <div class="table-responsive mb-4">
+                    <table class="table table-bordered table-sm align-middle mb-0 print-table">
+                        <thead class="table-light small text-uppercase">
+                            <tr>
+                                <th>Proveedor / Distribuidor</th>
+                                <th>Rubro / Insumos</th>
+                                <th class="text-center">Cant. Registros</th>
+                                <th>N° de Facturas del Mes</th>
+                                <th class="text-end">Efectivo</th>
+                                <th class="text-end">Cheque</th>
+                                <th class="text-end">Transferencia</th>
+                                <th class="text-end">Monto Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% set ns = namespace(hay_proveedores_con_gasto=false) %}
+                            {% for d in comparativa_distribuidores %}
+                                {% if d.cantidad_pedidos > 0 or d.total_gastado > 0 %}
+                                    {% set ns.hay_proveedores_con_gasto = true %}
+                                    <tr>
+                                        <td class="fw-bold">{{ d.nombre }}</td>
+                                        <td class="small text-muted">{{ d.rubro_insumo }}</td>
+                                        <td class="text-center fw-semibold">{{ d.cantidad_pedidos }}</td>
+                                        <td class="small">
+                                            <span class="font-monospace">{{ d.lista_numeros_facturas or '-' }}</span>
+                                        </td>
+                                        <td class="text-end small">{{ d.pago_efectivo | moneda }}</td>
+                                        <td class="text-end small">{{ d.pago_cheque | moneda }}</td>
+                                        <td class="text-end small">{{ d.pago_transferencia | moneda }}</td>
+                                        <td class="text-end fw-bold">{{ d.total_gastado | moneda }}</td>
+                                    </tr>
+                                {% endif %}
+                            {% endfor %}
+                            {% if not ns.hay_proveedores_con_gasto %}
+                                <tr>
+                                    <td colspan="8" class="text-center text-muted py-3">
+                                        No hay facturas registradas en el período {{ mes_filtro }}.
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                        {% if ns.hay_proveedores_con_gasto %}
+                        <tfoot class="table-light fw-bold">
+                            <tr>
+                                <td colspan="4" class="text-end text-uppercase">Totales por Medio de Pago y Mes:</td>
+                                <td class="text-end">{{ totales_pago['Efectivo'] | moneda }}</td>
+                                <td class="text-end">{{ totales_pago['Cheque'] | moneda }}</td>
+                                <td class="text-end">{{ totales_pago['Transferencia'] | moneda }}</td>
+                                <td class="text-end fs-6">{{ total_general_mes | moneda }}</td>
+                            </tr>
+                        </tfoot>
+                        {% endif %}
+                    </table>
+                </div>
+
+                <!-- 2. Listado Detallado de Todas las Facturas y Montos del Mes -->
+                <h6 class="fw-bold text-uppercase mb-2">
+                    <i class="bi bi-receipt-cutoff me-1"></i>2. Detalle Completo de Facturas y Montos del Mes ({{ mes_filtro }})
+                </h6>
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm align-middle mb-0 print-table">
+                        <thead class="table-light small text-uppercase">
+                            <tr>
+                                <th style="width: 95px;">Fecha</th>
+                                <th style="width: 170px;">N° de Factura(s)</th>
+                                <th>Proveedor / Distribuidor</th>
+                                <th style="width: 95px;" class="text-center">Clasificación</th>
+                                <th>Detalle del Pedido / Insumos</th>
+                                <th style="width: 115px;">Medio de Pago</th>
+                                <th style="width: 130px;" class="text-end">Monto ($)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if facturas %}
+                                {% for f in facturas %}
+                                    <tr>
+                                        <td class="text-nowrap small">{{ f.fecha }}</td>
+                                        <td class="fw-bold font-monospace small">{{ f.numero_factura }}</td>
+                                        <td>
+                                            <span class="fw-semibold">{{ f.distribuidor_nombre }}</span>
+                                            <small class="text-muted d-block" style="font-size: 0.75rem;">{{ f.rubro_insumo }}</small>
+                                        </td>
+                                        <td class="text-center small">{{ f.tipo_frecuencia }}</td>
+                                        <td class="small">{{ f.detalle_pedido }}</td>
+                                        <td class="small">{{ f.medio_pago }}</td>
+                                        <td class="text-end fw-bold text-nowrap">{{ f.monto | moneda }}</td>
+                                    </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="7" class="text-center text-muted py-3">
+                                        No existen facturas registradas para el mes {{ mes_filtro }}.
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                        {% if facturas %}
+                        <tfoot class="table-light">
+                            <tr class="fw-bold">
+                                <td colspan="6" class="text-end text-uppercase py-2">
+                                    Total General de Facturas del Mes ({{ facturas | length }} registro{{ 's' if (facturas | length) != 1 else '' }}):
+                                </td>
+                                <td class="text-end fs-5 py-2">{{ total_general_mes | moneda }}</td>
+                            </tr>
+                        </tfoot>
+                        {% endif %}
+                    </table>
+                </div>
+            </div>
+        </div>
+
     </main>
 
     <!-- Modal para Modificar Proveedor / Distribuidor -->
-    <div class="modal fade" id="modalEditarProveedor" tabindex="-1" aria-labelledby="modalEditarProveedorLabel" aria-hidden="true">
+    <div class="modal fade no-print" id="modalEditarProveedor" tabindex="-1" aria-labelledby="modalEditarProveedorLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content border-0 shadow">
                 <div class="modal-header bg-bakery text-white">
@@ -658,7 +894,7 @@
     </div>
 
     <!-- Modal para Editar Factura y su Detalle después de ingresarla -->
-    <div class="modal fade" id="modalEditarFactura" tabindex="-1" aria-labelledby="modalEditarFacturaLabel" aria-hidden="true">
+    <div class="modal fade no-print" id="modalEditarFactura" tabindex="-1" aria-labelledby="modalEditarFacturaLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content border-0 shadow">
                 <div class="modal-header bg-bakery text-white">
@@ -667,7 +903,7 @@
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                 </div>
-                <form id="formEditarFactura" method="POST" action="">
+                <form id="formEditarFactura" method="POST" action="" onsubmit="return validarModalEditarAntesDeEnviar(event)">
                     <div class="modal-body">
                         <div class="mb-3">
                             <div class="d-flex justify-content-between align-items-center mb-1">
@@ -689,7 +925,7 @@
                         <div class="row g-2 mb-3">
                             <div class="col-sm-4">
                                 <label class="form-label fw-semibold">N° de Factura *</label>
-                                <input type="text" id="edit_factura_numero" name="numero_factura" class="form-control" required>
+                                <input type="text" id="edit_factura_numero" name="numero_factura" class="form-control" required oninput="validarDuplicadoModalEditar()">
                             </div>
                             <div class="col-sm-4">
                                 <label class="form-label fw-semibold">Fecha *</label>
@@ -703,6 +939,10 @@
                                     <option value="Mensual">Mensual</option>
                                 </select>
                             </div>
+                        </div>
+                        <div id="alerta_duplicado_modal_editar" class="alert alert-danger py-2 px-3 mb-3 small" style="display: none;">
+                            <i class="bi bi-exclamation-octagon-fill me-1"></i>
+                            <span id="texto_alerta_duplicado_modal"></span>
                         </div>
                         <div class="row g-2 mb-2">
                             <div class="col-sm-6">
@@ -724,7 +964,7 @@
                     </div>
                     <div class="modal-footer bg-light">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                        <button type="submit" class="btn btn-bakery fw-bold">
+                        <button type="submit" id="btn_guardar_modal_factura" class="btn btn-bakery fw-bold">
                             <i class="bi bi-check-circle me-1"></i>Guardar Cambios
                         </button>
                     </div>
@@ -734,7 +974,7 @@
     </div>
 
     <!-- Modal para Ver Foto de la Factura en Grande (Zoom) -->
-    <div class="modal fade" id="modalZoomFotoFactura" tabindex="-1" aria-hidden="true">
+    <div class="modal fade no-print" id="modalZoomFotoFactura" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-centered">
             <div class="modal-content border-0 shadow">
                 <div class="modal-header bg-dark text-white py-2">
@@ -748,7 +988,7 @@
         </div>
     </div>
 
-    <footer class="bg-white border-top py-3 mt-auto">
+    <footer class="bg-white border-top py-3 mt-auto no-print">
         <div class="container text-center text-muted small">
             <strong>Panadería San Michell</strong> — Sistema de Control de Proveedores, Pedidos y Facturación | Desarrollado con Python, Flask y SQLite
         </div>
@@ -776,7 +1016,7 @@
                 const vServidor = Number(estadoServidorRespaldo.version_datos || 0);
                 const vLocal = localData ? Number(localData.version_datos || 0) : 0;
 
-                if (!localData || vServidor >= vLocal) {
+                if (vServidor >= vLocal && vServidor > 0) {
                     localStorage.setItem(CLAVE_RESPALDO_LOCAL, JSON.stringify(estadoServidorRespaldo));
                 } else if (localData && vLocal > vServidor) {
                     fetch('/api/sincronizar', {
@@ -788,8 +1028,6 @@
                     .then(res => {
                         if (res && res.restaurado) {
                             window.location.reload();
-                        } else if (res && res.estado) {
-                            localStorage.setItem(CLAVE_RESPALDO_LOCAL, JSON.stringify(res.estado));
                         }
                     })
                     .catch(err => console.error('Error sincronizando respaldo:', err));
@@ -828,16 +1066,7 @@
                             form.appendChild(inputResp);
                         }
                         const guardado = localStorage.getItem(CLAVE_RESPALDO_LOCAL);
-                        let mejorRespaldo = JSON.stringify(estadoServidorRespaldo);
-                        if (guardado) {
-                            try {
-                                const parsed = JSON.parse(guardado);
-                                if (Number(parsed.version_datos || 0) >= Number(estadoServidorRespaldo.version_datos || 0)) {
-                                    mejorRespaldo = guardado;
-                                }
-                            } catch (e) {}
-                        }
-                        inputResp.value = mejorRespaldo;
+                        inputResp.value = guardado || JSON.stringify(estadoServidorRespaldo);
 
                         // Si el formulario es de proveedores, guardar lo que se estaba escribiendo en Nueva Factura
                         if (form.action && form.action.includes('/distribuidor/')) {
@@ -940,6 +1169,7 @@
 
             const form = document.getElementById('formEditarFactura');
             form.action = '/factura/editar/' + id;
+            form.setAttribute('data-factura-id', id || '');
 
             document.getElementById('edit_factura_detalle').value = detalle;
             document.getElementById('edit_factura_distribuidor').value = distribuidor;
@@ -948,6 +1178,8 @@
             document.getElementById('edit_factura_frecuencia').value = frecuencia;
             document.getElementById('edit_factura_monto').value = monto;
             document.getElementById('edit_factura_pago').value = pago;
+
+            validarDuplicadoModalEditar();
 
             const modal = new bootstrap.Modal(document.getElementById('modalEditarFactura'));
             modal.show();
@@ -1203,6 +1435,7 @@
             if (matchFolio && matchFolio[1]) {
                 inputNumFactura.value = 'F-' + matchFolio[1];
                 resaltarCampoAutocompletado(inputNumFactura);
+                validarYActualizarFacturasFormulario();
                 camposDetectados.push('N Factura (F-' + matchFolio[1] + ')');
             }
 
@@ -1344,6 +1577,264 @@
             } else {
                 badge.classList.add('bg-warning', 'text-dark');
             }
+        }
+
+        // =========================================================================
+        // GESTIÓN DE MÚLTIPLES FACTURAS DEL MISMO PROVEEDOR, SUMA AUTOMÁTICA,
+        // VALIDACIÓN DE FACTURAS NO DUPLICADAS E IMPRESIÓN / PDF DEL MES
+        // =========================================================================
+        function normalizarCodigoFactura(codigo) {
+            if (!codigo) return '';
+            let limpio = String(codigo).toUpperCase().trim();
+            limpio = limpio.replace(/^(FACTURA|FOLIO|NRO|NUM|NO|N°|Nº|F)\s*[\.\:\-\#]*\s*/i, '');
+            limpio = limpio.replace(/[^A-Z0-9]/g, '');
+            if (/^\d+$/.test(limpio)) {
+                limpio = limpio.replace(/^0+/, '') || '0';
+            }
+            return limpio;
+        }
+
+        function extraerNumerosIndividuales(texto) {
+            if (!texto) return [];
+            return String(texto)
+                .split(/[\,\;\+\/\n]+/)
+                .map(p => p.trim())
+                .filter(p => p.length > 0);
+        }
+
+        function obtenerMapaFacturasExistentes(excluirId = null) {
+            const mapa = {};
+            const mapaDistNombres = {};
+            listaDistribuidoresOCR.forEach(d => {
+                mapaDistNombres[String(d.id)] = d.nombre;
+            });
+
+            let listaFacturas = (estadoServidorRespaldo && Array.isArray(estadoServidorRespaldo.facturas))
+                ? estadoServidorRespaldo.facturas
+                : [];
+
+            try {
+                const rawLocal = localStorage.getItem(CLAVE_RESPALDO_LOCAL);
+                if (rawLocal) {
+                    const parsed = JSON.parse(rawLocal);
+                    if (parsed && Array.isArray(parsed.facturas) && parsed.facturas.length >= listaFacturas.length) {
+                        listaFacturas = parsed.facturas;
+                    }
+                }
+            } catch (e) {}
+
+            listaFacturas.forEach(reg => {
+                if (excluirId !== null && String(reg.id) === String(excluirId)) {
+                    return;
+                }
+                const individuales = extraerNumerosIndividuales(reg.numero_factura || '');
+                individuales.forEach(num => {
+                    const clave = normalizarCodigoFactura(num);
+                    if (clave) {
+                        mapa[clave] = {
+                            original: num,
+                            fecha: reg.fecha || '',
+                            distribuidor: mapaDistNombres[String(reg.distribuidor_id)] || 'Proveedor registrado'
+                        };
+                    }
+                });
+            });
+
+            return mapa;
+        }
+
+        function agregarFilaFacturaAdicional(numValor = '', montoValor = '') {
+            const contenedor = document.getElementById('lista_facturas_proveedor');
+            if (!contenedor) return;
+
+            const fila = document.createElement('div');
+            fila.className = 'row g-2 align-items-center fila-factura-item mb-1';
+            fila.innerHTML = `
+                <div class="col-7">
+                    <input type="text" name="numeros_factura[]" class="form-control form-control-sm input-num-factura-lote" placeholder="Ej: F-10422 (Otra factura)" value="${numValor}" required oninput="validarYActualizarFacturasFormulario()">
+                </div>
+                <div class="col-4">
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text">$</span>
+                        <input type="number" name="montos_individuales[]" class="form-control input-monto-indiv-lote" placeholder="Monto (opc.)" min="0" step="1" value="${montoValor}" oninput="recalcularMontoTotalFacturas()">
+                    </div>
+                </div>
+                <div class="col-1 text-end">
+                    <button type="button" class="btn btn-outline-danger btn-sm py-0 px-1" onclick="eliminarFilaFacturaAdicional(this)" title="Quitar esta factura">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+            `;
+            contenedor.appendChild(fila);
+            recalcularMontoTotalFacturas();
+            validarYActualizarFacturasFormulario();
+
+            const inputNuevo = fila.querySelector('.input-num-factura-lote');
+            if (inputNuevo && !numValor) {
+                inputNuevo.focus();
+            }
+        }
+
+        function eliminarFilaFacturaAdicional(btn) {
+            const fila = btn.closest('.fila-factura-item');
+            if (fila) {
+                fila.remove();
+                recalcularMontoTotalFacturas();
+                validarYActualizarFacturasFormulario();
+            }
+        }
+
+        function recalcularMontoTotalFacturas() {
+            const inputsMonto = document.querySelectorAll('#lista_facturas_proveedor .input-monto-indiv-lote');
+            const inputTotal = document.getElementById('input_monto_factura');
+            const labelTotal = document.getElementById('label_monto_total_factura');
+            const ayudaSuma = document.getElementById('ayuda_suma_automatica');
+            const totalFilas = document.querySelectorAll('#lista_facturas_proveedor .fila-factura-item').length;
+
+            let suma = 0;
+            let cantidadConMonto = 0;
+
+            inputsMonto.forEach(inp => {
+                const val = parseInt(inp.value, 10);
+                if (!isNaN(val) && val > 0) {
+                    suma += val;
+                    cantidadConMonto++;
+                }
+            });
+
+            if (totalFilas > 1) {
+                if (labelTotal) {
+                    labelTotal.textContent = `Monto Total Sumado (${totalFilas} facturas) ($) *`;
+                }
+            } else {
+                if (labelTotal) {
+                    labelTotal.textContent = 'Monto Total a Cancelar ($) *';
+                }
+            }
+
+            if (cantidadConMonto > 0 && inputTotal) {
+                inputTotal.value = suma;
+                if (ayudaSuma) {
+                    ayudaSuma.style.display = 'block';
+                    ayudaSuma.innerHTML = `<i class="bi bi-calculator-fill me-1"></i>Suma automática de ${cantidadConMonto} factura(s): <strong>$${suma.toLocaleString('es-CL')}</strong> (o puedes editar el monto total directamente).`;
+                }
+            } else {
+                if (ayudaSuma) {
+                    ayudaSuma.style.display = 'none';
+                }
+            }
+        }
+
+        function validarYActualizarFacturasFormulario() {
+            const inputsNumero = document.querySelectorAll('#lista_facturas_proveedor .input-num-factura-lote');
+            const alertaDiv = document.getElementById('alerta_factura_duplicada');
+            const textoAlerta = document.getElementById('texto_alerta_duplicada');
+            const btnGuardar = document.getElementById('btn_guardar_factura');
+
+            const existentes = obtenerMapaFacturasExistentes(null);
+            const vistosEnFormulario = {};
+            let mensajeError = '';
+
+            inputsNumero.forEach(inp => {
+                inp.classList.remove('is-invalid');
+                const individuales = extraerNumerosIndividuales(inp.value);
+                individuales.forEach(num => {
+                    const clave = normalizarCodigoFactura(num);
+                    if (!clave) return;
+
+                    if (existentes[clave]) {
+                        inp.classList.add('is-invalid');
+                        const info = existentes[clave];
+                        mensajeError = `No se permite ingresar dos veces el mismo N° de factura: "${num}" ya está registrada (${info.distribuidor}, fecha ${info.fecha}).`;
+                    } else if (vistosEnFormulario[clave]) {
+                        inp.classList.add('is-invalid');
+                        mensajeError = `Has escrito dos veces el mismo N° de factura ("${num}") en este mismo ingreso.`;
+                    } else {
+                        vistosEnFormulario[clave] = num;
+                    }
+                });
+            });
+
+            if (mensajeError) {
+                if (alertaDiv && textoAlerta) {
+                    textoAlerta.textContent = mensajeError;
+                    alertaDiv.style.display = 'block';
+                }
+                if (btnGuardar) btnGuardar.disabled = true;
+                return false;
+            } else {
+                if (alertaDiv) alertaDiv.style.display = 'none';
+                if (btnGuardar) btnGuardar.disabled = false;
+                return true;
+            }
+        }
+
+        function validarFormularioNuevaFactura(event) {
+            if (!validarYActualizarFacturasFormulario()) {
+                if (event) event.preventDefault();
+                return false;
+            }
+            return true;
+        }
+
+        function validarDuplicadoModalEditar() {
+            const form = document.getElementById('formEditarFactura');
+            const inputNum = document.getElementById('edit_factura_numero');
+            const alertaModal = document.getElementById('alerta_duplicado_modal_editar');
+            const textoModal = document.getElementById('texto_alerta_duplicado_modal');
+            const btnGuardarModal = document.getElementById('btn_guardar_modal_factura');
+            if (!form || !inputNum) return true;
+
+            const idActual = form.getAttribute('data-factura-id') || null;
+            const existentes = obtenerMapaFacturasExistentes(idActual);
+            const vistos = {};
+            let errorMsg = '';
+
+            inputNum.classList.remove('is-invalid');
+            const individuales = extraerNumerosIndividuales(inputNum.value);
+            individuales.forEach(num => {
+                const clave = normalizarCodigoFactura(num);
+                if (!clave) return;
+                if (existentes[clave]) {
+                    inputNum.classList.add('is-invalid');
+                    const info = existentes[clave];
+                    errorMsg = `El N° de factura "${num}" ya está registrado en otra factura (${info.distribuidor}, fecha ${info.fecha}).`;
+                } else if (vistos[clave]) {
+                    inputNum.classList.add('is-invalid');
+                    errorMsg = `El N° de factura "${num}" está repetido en el mismo campo.`;
+                } else {
+                    vistos[clave] = true;
+                }
+            });
+
+            if (errorMsg) {
+                if (alertaModal && textoModal) {
+                    textoModal.textContent = errorMsg;
+                    alertaModal.style.display = 'block';
+                }
+                if (btnGuardarModal) btnGuardarModal.disabled = true;
+                return false;
+            } else {
+                if (alertaModal) alertaModal.style.display = 'none';
+                if (btnGuardarModal) btnGuardarModal.disabled = false;
+                return true;
+            }
+        }
+
+        function validarModalEditarAntesDeEnviar(event) {
+            if (!validarDuplicadoModalEditar()) {
+                if (event) event.preventDefault();
+                return false;
+            }
+            return true;
+        }
+
+        function imprimirResumenMensual() {
+            const seccion = document.getElementById('apartadoResumenMensualPDF');
+            if (seccion) {
+                seccion.scrollIntoView({ behavior: 'instant', block: 'start' });
+            }
+            window.print();
         }
 
         // Datos inyectados desde Flask (Jinja2) hacia JavaScript para construir los gráficos
