@@ -66,3 +66,66 @@ body {
 .nav-pills .nav-link {
     color: var(--bakery-primary);
 }
+
+/* Estilos para impresión y exportación limpia a PDF del Resumen Mensual */
+@media print {
+    @page {
+        size: auto;
+        margin: 12mm;
+    }
+
+    body {
+        background-color: #ffffff !important;
+        color: #000000 !important;
+        font-size: 11pt;
+    }
+
+    .no-print,
+    nav,
+    footer,
+    .modal,
+    .btn {
+        display: none !important;
+    }
+
+    main.container-fluid {
+        padding: 0 !important;
+        margin: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+
+    .print-report-card {
+        box-shadow: none !important;
+        border: none !important;
+        margin: 0 !important;
+    }
+
+    #hojaImpresionResumenMes {
+        padding: 0 !important;
+    }
+
+    .print-table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+        font-size: 9.5pt;
+    }
+
+    .print-table th,
+    .print-table td {
+        border: 1px solid #333333 !important;
+        padding: 5px 7px !important;
+        color: #000000 !important;
+    }
+
+    .print-table thead th,
+    .print-table tfoot td {
+        background-color: #efefef !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    tr {
+        page-break-inside: avoid;
+    }
+}
