@@ -406,7 +406,7 @@
             <div class="col-lg-7">
                 <div class="card border-0 shadow-sm h-100">
                     <div class="card-header bg-white py-3 border-bottom">
-                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
                             <h5 class="mb-0 fw-bold text-bakery">
                                 <i class="bi bi-journal-text me-2"></i>Registro de Facturas ({{ mes_filtro }})
                             </h5>
@@ -434,6 +434,29 @@
                                 </li>
                             </ul>
                         </div>
+
+                        <!-- BUSCADOR Y VERIFICADOR POR NÚMERO DE FACTURA ESPECÍFICO -->
+                        <div class="bg-light border rounded-3 p-2">
+                            <label for="input_buscador_numero_factura" class="form-label small fw-bold text-bakery mb-1">
+                                <i class="bi bi-search me-1"></i>Buscador y Verificador por N° de Factura Específico
+                            </label>
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text bg-white"><i class="bi bi-receipt text-bakery"></i></span>
+                                <input type="text"
+                                       id="input_buscador_numero_factura"
+                                       class="form-control"
+                                       placeholder="Escribe un N° de factura específico (ej: 10421 o F-10421) para buscar y verificar si ya está ingresada..."
+                                       oninput="buscarPorNumeroFacturaEspecifico()">
+                                <button type="button"
+                                        id="btn_limpiar_buscador_factura"
+                                        class="btn btn-outline-secondary"
+                                        style="display: none;"
+                                        onclick="limpiarBuscadorFactura()">
+                                    <i class="bi bi-x-lg me-1"></i>Limpiar
+                                </button>
+                            </div>
+                            <div id="resultadoBusquedaFacturaEspecifica" class="mt-2" style="display: none;"></div>
+                        </div>
                     </div>
 
                     <div class="card-body p-0">
@@ -442,7 +465,7 @@
                             {% macro tabla_facturas(lista_facturas, mensaje_vacio) %}
                                 {% if lista_facturas %}
                                     <div class="table-responsive">
-                                        <table class="table table-hover align-middle mb-0">
+                                        <table class="table table-hover align-middle mb-0 tabla-listado-facturas">
                                             <thead class="table-light small text-uppercase">
                                                 <tr>
                                                     <th class="ps-3">Factura / Fecha</th>
@@ -455,7 +478,7 @@
                                             </thead>
                                             <tbody>
                                                 {% for f in lista_facturas %}
-                                                <tr>
+                                                <tr class="fila-registro-factura" data-num-factura="{{ f.numero_factura }}">
                                                     <td class="ps-3">
                                                         <span class="fw-bold d-block text-dark">{{ f.numero_factura }}</span>
                                                         <small class="text-muted">{{ f.fecha }}</small>
@@ -734,11 +757,11 @@
                     </div>
                 </div>
 
-                <!-- 1. Tabla Resumen por Proveedor con Números de Factura y Monto Total -->
+                <!-- Tabla Resumen por Proveedor con Números de Factura y Monto Total -->
                 <h6 class="fw-bold text-uppercase mb-2">
-                    <i class="bi bi-building-check me-1"></i>1. Resumen de Facturas y Montos por Proveedor ({{ mes_filtro }})
+                    <i class="bi bi-building-check me-1"></i>Resumen de Facturas y Montos por Proveedor ({{ mes_filtro }})
                 </h6>
-                <div class="table-responsive mb-4">
+                <div class="table-responsive">
                     <table class="table table-bordered table-sm align-middle mb-0 print-table">
                         <thead class="table-light small text-uppercase">
                             <tr>
@@ -787,60 +810,6 @@
                                 <td class="text-end">{{ totales_pago['Cheque'] | moneda }}</td>
                                 <td class="text-end">{{ totales_pago['Transferencia'] | moneda }}</td>
                                 <td class="text-end fs-6">{{ total_general_mes | moneda }}</td>
-                            </tr>
-                        </tfoot>
-                        {% endif %}
-                    </table>
-                </div>
-
-                <!-- 2. Listado Detallado de Todas las Facturas y Montos del Mes -->
-                <h6 class="fw-bold text-uppercase mb-2">
-                    <i class="bi bi-receipt-cutoff me-1"></i>2. Detalle Completo de Facturas y Montos del Mes ({{ mes_filtro }})
-                </h6>
-                <div class="table-responsive">
-                    <table class="table table-bordered table-sm align-middle mb-0 print-table">
-                        <thead class="table-light small text-uppercase">
-                            <tr>
-                                <th style="width: 95px;">Fecha</th>
-                                <th style="width: 170px;">N° de Factura(s)</th>
-                                <th>Proveedor / Distribuidor</th>
-                                <th style="width: 95px;" class="text-center">Clasificación</th>
-                                <th>Detalle del Pedido / Insumos</th>
-                                <th style="width: 115px;">Medio de Pago</th>
-                                <th style="width: 130px;" class="text-end">Monto ($)</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% if facturas %}
-                                {% for f in facturas %}
-                                    <tr>
-                                        <td class="text-nowrap small">{{ f.fecha }}</td>
-                                        <td class="fw-bold font-monospace small">{{ f.numero_factura }}</td>
-                                        <td>
-                                            <span class="fw-semibold">{{ f.distribuidor_nombre }}</span>
-                                            <small class="text-muted d-block" style="font-size: 0.75rem;">{{ f.rubro_insumo }}</small>
-                                        </td>
-                                        <td class="text-center small">{{ f.tipo_frecuencia }}</td>
-                                        <td class="small">{{ f.detalle_pedido }}</td>
-                                        <td class="small">{{ f.medio_pago }}</td>
-                                        <td class="text-end fw-bold text-nowrap">{{ f.monto | moneda }}</td>
-                                    </tr>
-                                {% endfor %}
-                            {% else %}
-                                <tr>
-                                    <td colspan="7" class="text-center text-muted py-3">
-                                        No existen facturas registradas para el mes {{ mes_filtro }}.
-                                    </td>
-                                </tr>
-                            {% endif %}
-                        </tbody>
-                        {% if facturas %}
-                        <tfoot class="table-light">
-                            <tr class="fw-bold">
-                                <td colspan="6" class="text-end text-uppercase py-2">
-                                    Total General de Facturas del Mes ({{ facturas | length }} registro{{ 's' if (facturas | length) != 1 else '' }}):
-                                </td>
-                                <td class="text-end fs-5 py-2">{{ total_general_mes | moneda }}</td>
                             </tr>
                         </tfoot>
                         {% endif %}
@@ -1835,6 +1804,151 @@
                 seccion.scrollIntoView({ behavior: 'instant', block: 'start' });
             }
             window.print();
+        }
+
+        // Buscador y verificador por número de factura específico
+        function buscarPorNumeroFacturaEspecifico() {
+            const input = document.getElementById('input_buscador_numero_factura');
+            const btnLimpiar = document.getElementById('btn_limpiar_buscador_factura');
+            const contenedorResultado = document.getElementById('resultadoBusquedaFacturaEspecifica');
+            const filasTabla = document.querySelectorAll('.fila-registro-factura');
+
+            const terminoRaw = (input ? input.value : '').trim();
+            const claveBuscada = normalizarCodigoFactura(terminoRaw);
+
+            if (!terminoRaw) {
+                if (btnLimpiar) btnLimpiar.style.display = 'none';
+                if (contenedorResultado) {
+                    contenedorResultado.style.display = 'none';
+                    contenedorResultado.innerHTML = '';
+                }
+                filasTabla.forEach(fila => {
+                    fila.style.display = '';
+                    fila.classList.remove('table-warning');
+                });
+                return;
+            }
+
+            if (btnLimpiar) btnLimpiar.style.display = 'inline-block';
+
+            // 1. Filtrar filas de las tablas del mes actual
+            filasTabla.forEach(fila => {
+                const numEnFila = (fila.getAttribute('data-num-factura') || '').toUpperCase();
+                const codigosFila = extraerNumerosIndividuales(numEnFila).map(c => normalizarCodigoFactura(c));
+                const coincideExacto = claveBuscada && codigosFila.includes(claveBuscada);
+                const coincideParcial = numEnFila.includes(terminoRaw.toUpperCase()) || (claveBuscada && codigosFila.some(c => c.includes(claveBuscada)));
+
+                if (coincideExacto || coincideParcial) {
+                    fila.style.display = '';
+                    if (coincideExacto) {
+                        fila.classList.add('table-warning');
+                    } else {
+                        fila.classList.remove('table-warning');
+                    }
+                } else {
+                    fila.style.display = 'none';
+                    fila.classList.remove('table-warning');
+                }
+            });
+
+            // 2. Buscar en la base completa de facturas (incluyendo todos los meses) para verificación exacta
+            const mapaDistNombres = {};
+            listaDistribuidoresOCR.forEach(d => {
+                mapaDistNombres[String(d.id)] = d.nombre;
+            });
+
+            let todasLasFacturas = (estadoServidorRespaldo && Array.isArray(estadoServidorRespaldo.facturas))
+                ? estadoServidorRespaldo.facturas
+                : [];
+            try {
+                const rawLocal = localStorage.getItem(CLAVE_RESPALDO_LOCAL);
+                if (rawLocal) {
+                    const parsed = JSON.parse(rawLocal);
+                    if (parsed && Array.isArray(parsed.facturas) && parsed.facturas.length >= todasLasFacturas.length) {
+                        todasLasFacturas = parsed.facturas;
+                    }
+                }
+            } catch (e) {}
+
+            const coincidenciasExactas = [];
+            const coincidenciasParciales = [];
+
+            todasLasFacturas.forEach(reg => {
+                const individuales = extraerNumerosIndividuales(reg.numero_factura || '');
+                const codigosNorm = individuales.map(n => normalizarCodigoFactura(n));
+                const nombreProv = mapaDistNombres[String(reg.distribuidor_id)] || 'Proveedor registrado';
+
+                if (claveBuscada && codigosNorm.includes(claveBuscada)) {
+                    coincidenciasExactas.push({ ...reg, proveedor: nombreProv });
+                } else if (
+                    String(reg.numero_factura || '').toUpperCase().includes(terminoRaw.toUpperCase()) ||
+                    (claveBuscada && codigosNorm.some(c => c.includes(claveBuscada)))
+                ) {
+                    coincidenciasParciales.push({ ...reg, proveedor: nombreProv });
+                }
+            });
+
+            if (!contenedorResultado) return;
+            contenedorResultado.style.display = 'block';
+
+            if (coincidenciasExactas.length > 0) {
+                const itemsHtml = coincidenciasExactas.map(f => {
+                    const montoFmt = Number(f.monto || 0).toLocaleString('es-CL');
+                    const mesReg = (f.fecha || '').slice(0, 7);
+                    const linkMes = (mesReg && mesReg !== "{{ mes_filtro }}")
+                        ? `<a href="/?mes=${mesReg}" class="btn btn-sm btn-outline-dark ms-2 py-0 px-2">Ir al mes ${mesReg}</a>`
+                        : `<span class="badge bg-success ms-1">En este mes</span>`;
+                    return `
+                        <div class="mt-1 pt-1 border-top border-success-subtle">
+                            <strong>N° Factura:</strong> <span class="font-monospace">${f.numero_factura}</span> |
+                            <strong>Proveedor:</strong> ${f.proveedor} |
+                            <strong>Fecha:</strong> ${f.fecha} |
+                            <strong>Monto:</strong> $${montoFmt} (${f.medio_pago})
+                            ${linkMes}
+                            <div class="text-muted" style="font-size: 0.78rem;"><strong>Detalle:</strong> ${f.detalle_pedido || '-'}</div>
+                        </div>
+                    `;
+                }).join('');
+
+                contenedorResultado.innerHTML = `
+                    <div class="alert alert-success py-2 px-3 mb-0 small">
+                        <div class="fw-bold">
+                            <i class="bi bi-check-circle-fill me-1"></i>¡Factura YA REGISTRADA! El N° "${terminoRaw}" ya se encuentra ingresado en el sistema:
+                        </div>
+                        ${itemsHtml}
+                    </div>
+                `;
+            } else if (coincidenciasParciales.length > 0) {
+                const itemsHtml = coincidenciasParciales.slice(0, 5).map(f => {
+                    const montoFmt = Number(f.monto || 0).toLocaleString('es-CL');
+                    return `<div>• <strong>${f.numero_factura}</strong> — ${f.proveedor} (${f.fecha}) — <strong>$${montoFmt}</strong></div>`;
+                }).join('');
+
+                contenedorResultado.innerHTML = `
+                    <div class="alert alert-warning py-2 px-3 mb-0 small">
+                        <div class="fw-bold">
+                            <i class="bi bi-info-circle-fill me-1"></i>El N° exacto "${terminoRaw}" no está registrado, pero hay ${coincidenciasParciales.length} factura(s) con numeración similar:
+                        </div>
+                        <div class="mt-1">${itemsHtml}</div>
+                    </div>
+                `;
+            } else {
+                contenedorResultado.innerHTML = `
+                    <div class="alert alert-secondary py-2 px-3 mb-0 small">
+                        <i class="bi bi-shield-check text-primary me-1"></i>
+                        <strong>N° disponible:</strong> No existe ninguna factura registrada con el número <strong>"${terminoRaw}"</strong>.
+                    </div>
+                `;
+            }
+        }
+
+        function limpiarBuscadorFactura() {
+            const input = document.getElementById('input_buscador_numero_factura');
+            if (input) {
+                input.value = '';
+                buscarPorNumeroFacturaEspecifico();
+                input.focus();
+            }
         }
 
         // Datos inyectados desde Flask (Jinja2) hacia JavaScript para construir los gráficos
